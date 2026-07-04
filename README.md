@@ -1,6 +1,6 @@
 # KFC — Keep Finding Chickens
 
-A neighbourhood Capture-The-Flag (CTF) web application where players solve challenges to find hidden flags. Inspired by the alarming number of chickens taking up residence in the neighbourhood.
+A Capture-The-Flag (CTF) mock-up where players solve challenges to find hidden flags. Inspired by the increasing chickens that appeared in the vicinity.
 
 ## Overview
 
