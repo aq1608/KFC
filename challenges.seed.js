@@ -278,4 +278,59 @@ checking where it lands. See if you can climb <em>out</em> of the reading room.
     flag: 'CHICKEN{path_traversal_poultry}',
     asset_path: null,
   },
+
+  // ---------------- Pwn / Logic ----------------
+  {
+    slug: 'coop-records',
+    title: 'Coop Records',
+    category: 'pwn',
+    points: 100,
+    description: `The Coop Records office lets each hen read her own filed note by ID. Yours is record
+<strong>#1001</strong>:
+<a href="/c/coop-records/note?id=1001" target="_blank" rel="noopener"><code>?id=1001</code></a>.
+
+The clerk hands over any record you ask for — she never checks whether it's actually
+<em>yours</em>. The Head Rooster filed something confidential a few records earlier.
+
+<em>Hint: this is a classic IDOR (Insecure Direct Object Reference). Just change the number.</em>`,
+    flag: 'CHICKEN{idor_the_head_rooster}',
+    asset_path: null,
+  },
+  {
+    slug: 'fowl-play-shop',
+    title: 'Fowl Play Shop',
+    category: 'pwn',
+    points: 125,
+    description: `The Fowl Play Shop sells feed and straw — and one absurdly expensive <strong>Golden Egg</strong>
+(1,000,000 coins). Your wallet holds a measly <strong>100</strong> coins.
+
+Checkout takes a JSON cart and only cares that the <em>total</em> fits your wallet — it never
+checks that quantities make any sense. Example (an honest cart):
+<pre>/c/fowl-play-shop/checkout?cart=[{"item":"straw","qty":2}]</pre>
+
+Prices: <code>golden-egg</code> = 1000000, <code>feed</code> = 1000, <code>straw</code> = 50.
+Build a cart that lands the Golden Egg without going over 100 coins.
+
+<em>Hint: what happens to a total when a quantity goes negative?</em>`,
+    flag: 'CHICKEN{negative_qty_free_eggs}',
+    asset_path: null,
+  },
+  {
+    slug: 'token-of-trust',
+    title: 'Token of Trust',
+    category: 'pwn',
+    points: 175,
+    description: `The henhouse API authenticates with JSON Web Tokens. Visit
+<a href="/c/token-of-trust/portal" target="_blank" rel="noopener">the portal</a> to receive your
+signed <em>guest</em> token, then present it to the API:
+<pre>/c/token-of-trust/api?token=YOUR_TOKEN</pre>
+
+You can't forge the HS256 signature — you don't know the secret. But the server's verifier has a
+notorious flaw in <em>which algorithms it trusts</em>. Only a token whose payload says
+<code>"role":"admin"</code> unlocks the secret.
+
+<em>Hint: what if a token claims it needs no signature at all? Look up the JWT "alg:none" attack.</em>`,
+    flag: 'CHICKEN{alg_none_is_never_okay}',
+    asset_path: null,
+  },
 ];

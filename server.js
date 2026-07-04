@@ -1,4 +1,5 @@
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
@@ -257,6 +258,110 @@ app.get('/c/egg-vault/read', (req, res) => {
     return res.status(404).send(`No such note: ${resolved}`);
   }
   res.send(`[${resolved}]\n\n${content}\n`);
+});
+
+// ---------- Pwn / Logic challenges ----------
+
+// Coop Records: Insecure Direct Object Reference (no ownership check).
+const COOP_RECORDS = {
+  1000: { owner: 'head-rooster', text: 'CONFIDENTIAL — master roost key: CHICKEN{idor_the_head_rooster}' },
+  1001: { owner: 'you',          text: 'Your welcome note. Curious what the other records hold? Try nearby IDs.' },
+  1002: { owner: 'clucky',       text: "Clucky's grocery list: corn, grit, and more corn." },
+  1003: { owner: 'peep',         text: 'Peep reminds everyone the water dish needs refilling.' },
+};
+app.get('/c/coop-records/note', (req, res) => {
+  res.type('text/plain');
+  const id = parseInt(req.query.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).send('Provide ?id=<number> (yours is 1001).');
+  const rec = COOP_RECORDS[id];
+  if (!rec) return res.status(404).send(`No record #${id}.`);
+  res.send(`Record #${id} (owner: ${rec.owner})\n\n${rec.text}\n`);
+});
+
+// Fowl Play Shop: business-logic flaw — no check that quantities are positive.
+const SHOP_PRICES = { 'golden-egg': 1000000, feed: 1000, straw: 50 };
+const SHOP_WALLET = 100;
+app.get('/c/fowl-play-shop/checkout', (req, res) => {
+  res.type('text/plain');
+  let cart;
+  try {
+    cart = JSON.parse(req.query.cart || '[]');
+  } catch (e) {
+    return res.status(400).send('Bad cart JSON. Example: ?cart=[{"item":"straw","qty":2}]');
+  }
+  if (!Array.isArray(cart)) return res.status(400).send('Cart must be a JSON array.');
+
+  let total = 0;
+  for (const line of cart) {
+    const price = SHOP_PRICES[line && line.item];
+    if (price === undefined) return res.status(400).send(`Unknown item: ${line && line.item}`);
+    const qty = Number(line.qty);
+    if (!Number.isFinite(qty)) return res.status(400).send('Each line needs a numeric qty.');
+    total += price * qty; // BUG: quantities are never required to be positive
+  }
+
+  const hasGolden = cart.some((l) => l.item === 'golden-egg' && Number(l.qty) >= 1);
+  if (total > SHOP_WALLET) {
+    return res.send(`Total ${total} coins exceeds your wallet (${SHOP_WALLET}). Checkout declined.`);
+  }
+  if (!hasGolden) {
+    return res.send(`Checkout OK — total ${total} coins. (But there's no Golden Egg in your cart.)`);
+  }
+  res.send(`Checkout complete! You walked out with the Golden Egg for ${total} coins.\n` +
+           `Crack it open: CHICKEN{negative_qty_free_eggs}\n`);
+});
+
+// Token of Trust: JWT "alg:none" auth bypass.
+const JWT_SECRET = process.env.TOT_SECRET || 'coop-signing-key-do-not-share';
+function b64url(input) {
+  return Buffer.from(input).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64urlToStr(seg) {
+  return Buffer.from(seg.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+}
+function hs256(data, secret) {
+  return b64url(crypto.createHmac('sha256', secret).update(data).digest());
+}
+function signJwt(payload, secret) {
+  const h = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const p = b64url(JSON.stringify(payload));
+  return `${h}.${p}.${hs256(`${h}.${p}`, secret)}`;
+}
+// Deliberately-flawed verifier: it honours "alg":"none" and skips the signature check.
+function insecureVerifyJwt(token) {
+  const parts = String(token).split('.');
+  if (parts.length < 2) return null;
+  let header, payload;
+  try {
+    header = JSON.parse(b64urlToStr(parts[0]));
+    payload = JSON.parse(b64urlToStr(parts[1]));
+  } catch (e) {
+    return null;
+  }
+  if (header.alg === 'none') return payload; // BUG: unsigned tokens are trusted
+  if (header.alg === 'HS256') {
+    const expected = hs256(`${parts[0]}.${parts[1]}`, JWT_SECRET);
+    const given = Buffer.from(parts[2] || '');
+    const want = Buffer.from(expected);
+    if (given.length === want.length && crypto.timingSafeEqual(given, want)) return payload;
+  }
+  return null;
+}
+app.get('/c/token-of-trust/portal', (req, res) => {
+  const guestToken = signJwt({ user: 'guest', role: 'guest' }, JWT_SECRET);
+  res.render('challenge-pages/token-of-trust-portal', { guestToken });
+});
+app.get('/c/token-of-trust/api', (req, res) => {
+  res.type('text/plain');
+  const auth = req.headers.authorization || '';
+  const token = req.query.token || (auth.startsWith('Bearer ') ? auth.slice(7) : '');
+  if (!token) return res.status(400).send('Send your token: ?token=... (get one from /c/token-of-trust/portal)');
+  const payload = insecureVerifyJwt(token);
+  if (!payload) return res.status(401).send('Invalid or unverifiable token.');
+  if (payload.role === 'admin') {
+    return res.send('Access granted, admin. The secret roost log reads: CHICKEN{alg_none_is_never_okay}');
+  }
+  res.send(`Hello, ${payload.user || 'guest'} (role: ${payload.role || 'none'}). Only admins may read the secret.`);
 });
 
 // ---------- Scoreboard ----------
