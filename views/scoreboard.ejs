@@ -11,6 +11,7 @@
       <tr>
         <th class="rank">#</th>
         <th>Hunter</th>
+        <th class="num">🩸</th>
         <th class="num">Solves</th>
         <th class="num">Score</th>
       </tr>
@@ -21,7 +22,8 @@
           <td class="rank">
             <% if (i === 0) { %>🥇<% } else if (i === 1) { %>🥈<% } else if (i === 2) { %>🥉<% } else { %><%= i + 1 %><% } %>
           </td>
-          <td><%= r.username %></td>
+          <td><a class="sb-user" href="/u/<%= encodeURIComponent(r.username) %>"><%= r.username %></a></td>
+          <td class="num"><%= r.first_bloods > 0 ? r.first_bloods : '—' %></td>
           <td class="num"><%= r.solved_count %></td>
           <td class="num"><strong><%= r.score %></strong></td>
         </tr>

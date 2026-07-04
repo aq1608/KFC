@@ -18,7 +18,7 @@
       <a href="/challenges">Challenges</a>
       <a href="/scoreboard">Scoreboard</a>
       <% if (currentUser) { %>
-        <span class="nav-user">👤 <%= currentUser.username %></span>
+        <a class="nav-user" href="/me">👤 <%= currentUser.username %></a>
         <form method="post" action="/logout" class="inline">
           <button type="submit" class="link-button">Log out</button>
         </form>

@@ -1,0 +1,70 @@
+<%- include('partials/header', { pageTitle: profile.username + " — Profile" }) %>
+
+<%
+  function fmtDate(unixSecs) {
+    if (!unixSecs) return '—';
+    const d = new Date(unixSecs * 1000);
+    return d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+  }
+  const catIcon = { web: '🕸️', pwn: '💥', crypto: '🔐', rev: '🔧', stego: '🖼️', forensics: '🧪', osint: '🔎', misc: '🎲' };
+  const isMe = currentUser && currentUser.username.toLowerCase() === profile.username.toLowerCase();
+%>
+
+<article class="profile">
+  <header class="profile-header">
+    <div class="profile-avatar">🐔</div>
+    <div>
+      <h1><%= profile.username %><% if (isMe) { %> <span class="you-tag">you</span><% } %></h1>
+      <p class="subhead">Joined <%= fmtDate(profile.created_at) %></p>
+    </div>
+  </header>
+
+  <div class="profile-stats">
+    <div class="stat">
+      <div class="stat-num">#<%= rank %></div>
+      <div class="stat-label">Rank</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num"><%= score %></div>
+      <div class="stat-label">Points</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num"><%= solves.length %>/<%= totalChallenges %></div>
+      <div class="stat-label">Solved</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">🩸 <%= firstBloods %></div>
+      <div class="stat-label">First bloods</div>
+    </div>
+  </div>
+
+  <% if (totalChallenges > 0) { %>
+    <div class="profile-progress">
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: <%= Math.round((solves.length / totalChallenges) * 100) %>%;"></div>
+      </div>
+      <span class="progress-text"><%= Math.round((solves.length / totalChallenges) * 100) %>% complete</span>
+    </div>
+  <% } %>
+
+  <h2>Solved challenges</h2>
+  <% if (solves.length === 0) { %>
+    <p class="empty">
+      <%= isMe ? "You haven't" : profile.username + " hasn't" %> solved anything yet.
+      <% if (isMe) { %><a href="/challenges">Start hunting →</a><% } %>
+    </p>
+  <% } else { %>
+    <ul class="solve-list">
+      <% solves.forEach((s) => { %>
+        <li class="solve-row">
+          <span class="cat-pill cat-<%= s.category %>"><%= catIcon[s.category] || '🎯' %> <%= s.category %></span>
+          <a class="solve-title" href="/challenges/<%= s.slug %>"><%= s.title %></a>
+          <span class="solve-pts"><%= s.points %> pts</span>
+          <span class="solve-when"><%= fmtDate(s.solved_at) %></span>
+        </li>
+      <% }) %>
+    </ul>
+  <% } %>
+</article>
+
+<%- include('partials/footer') %>
