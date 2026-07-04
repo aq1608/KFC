@@ -136,15 +136,17 @@ Then add it to the repo: **Settings → Secrets and variables → Actions → Ne
 
 Until that secret is set the workflow still runs the tests, but the deploy step **skips gracefully** (with a warning annotation) instead of failing — so enabling CD is just a matter of adding the token later.
 
-### Deploying to Render
+### Deploying to Render (free tier)
 
-The bundled [`render.yaml`](render.yaml) is a Blueprint that builds the `Dockerfile`, attaches a 1 GB disk at `/app/data`, and health-checks `/healthz`.
+The bundled [`render.yaml`](render.yaml) is a Blueprint that runs KFC entirely on Render's **free tier**: a free web service (built from the `Dockerfile`) plus a **free Render Postgres**, with `DATABASE_URL` wired up automatically. Postgres is what makes the free tier work — free web services have no persistent disk, so the SQLite files wouldn't survive a restart.
 
 1. Push the repo to GitHub, then in Render choose **New → Blueprint** and point it at your fork.
-2. Render reads `render.yaml`, provisions the service + disk, and auto-generates `SESSION_SECRET` / `TOT_SECRET`.
+2. Render provisions the web service + Postgres, wires `DATABASE_URL`, and auto-generates `SESSION_SECRET` / `TOT_SECRET`.
 3. Set `ADMIN_USERS` in the dashboard (it's marked `sync: false`).
 
-> Persistent disks require a paid instance type — the blueprint uses the `starter` plan, since Render's free plan has an ephemeral filesystem.
+> **Free-tier caveats:** the web service **sleeps after ~15 min idle** (first request after a nap is slow), and Render's free Postgres has storage/retention limits. Fine for demos and small events; upgrade the instance for an always-on competition. Prefer SQLite + a persistent disk? See the switch instructions commented at the top of `render.yaml` (use `plan: starter` + a disk).
+
+**Auto-deploy from GitHub Actions.** Render can auto-deploy natively, or you can use the bundled [`.github/workflows/deploy-render.yml`](.github/workflows/deploy-render.yml): on every push to `main` it runs the tests, then triggers a Render **Deploy Hook**. To enable it, copy your service's hook URL (Render → your service → **Settings → Deploy Hook**) into a repo secret named `RENDER_DEPLOY_HOOK_URL` (Settings → Secrets and variables → Actions). Until that secret is set, the workflow runs the tests and skips the deploy step gracefully.
 
 ### Deploying to Railway
 
