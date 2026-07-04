@@ -1,5 +1,11 @@
 # KFC — Keep Finding Chickens
 
+[![CI](https://github.com/aq1608/KFC/actions/workflows/ci.yml/badge.svg)](https://github.com/aq1608/KFC/actions/workflows/ci.yml)
+[![Deploy (Render)](https://github.com/aq1608/KFC/actions/workflows/deploy-render.yml/badge.svg)](https://github.com/aq1608/KFC/actions/workflows/deploy-render.yml)
+
+**🐔 Live demo — [kfc-j10g.onrender.com](https://kfc-j10g.onrender.com/)**
+_(Hosted free on Render with a Postgres backend. The instance sleeps when idle, so the first load after a while can take ~30–60s to wake.)_
+
 A Capture-The-Flag (CTF) mock-up where players solve challenges to find hidden flags. Inspired by the increasing chickens that appeared in the vicinity.
 
 ## Overview
@@ -143,6 +149,8 @@ The bundled [`render.yaml`](render.yaml) is a Blueprint that runs KFC entirely o
 1. Push the repo to GitHub, then in Render choose **New → Blueprint** and point it at your fork.
 2. Render provisions the web service + Postgres, wires `DATABASE_URL`, and auto-generates `SESSION_SECRET` / `TOT_SECRET`.
 3. Set `ADMIN_USERS` in the dashboard (it's marked `sync: false`).
+
+A live instance built from this blueprint runs at **[kfc-j10g.onrender.com](https://kfc-j10g.onrender.com/)** — check [`/healthz`](https://kfc-j10g.onrender.com/healthz) to confirm it reports `"backend": "postgres"`.
 
 > **Free-tier caveats:** the web service **sleeps after ~15 min idle** (first request after a nap is slow), and Render's free Postgres has storage/retention limits. Fine for demos and small events; upgrade the instance for an always-on competition. Prefer SQLite + a persistent disk? See the switch instructions commented at the top of `render.yaml` (use `plan: starter` + a disk).
 
