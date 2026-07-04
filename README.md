@@ -351,6 +351,14 @@ Keep the flag on the server. Store it only in `challenges.seed.js` (and, where a
 - Sessions use `httpOnly` and `sameSite: lax` cookies.
 - The `.gitignore` excludes the `data/` directory (databases) and `.env` files.
 
+## Built with Kiro
+
+This project was built with [Kiro](https://kiro.dev) using its spec-driven workflow. The [`.kiro/`](.kiro/) folder captures how:
+
+- **[`.kiro/steering/`](.kiro/steering/)** — always-on context that guides the agent: the product overview (`product.md`), tech stack & commands (`tech.md`), project structure (`structure.md`), and hard guardrails (`conventions.md`, e.g. flags stay server-side, vulnerable challenges are sandboxed, both DB backends stay in sync, keep tests green).
+- **[`.kiro/specs/challenge-platform/`](.kiro/specs/challenge-platform/)** — the platform spec: `requirements.md` (EARS-format acceptance criteria), `design.md` (architecture, store interface, data models), and `tasks.md` (the implementation plan).
+- **[`.kiro/hooks/`](.kiro/hooks/)** — an agent hook that fires when the challenge seed or a store backend changes, prompting the agent to keep both databases in sync and re-verify every flag is reachable.
+
 ## Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup, how to add challenges, testing, and the branch/PR workflow.
