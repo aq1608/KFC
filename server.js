@@ -7,6 +7,7 @@ const bcrypt = require('bcrypt');
 
 const { db, seedChallenges } = require('./db');
 const challengeSeed = require('./challenges.seed');
+const { dynamicValue } = require('./scoring');
 
 seedChallenges(challengeSeed);
 
@@ -103,16 +104,15 @@ const stmts = {
   insertSolve: db.prepare('INSERT OR IGNORE INTO solves (user_id, challenge_id) VALUES (?, ?)'),
   solvedIdsForUser: db.prepare('SELECT challenge_id FROM solves WHERE user_id = ?'),
 
-  // Net score = solved challenge points minus unlocked hint costs.
-  scoreboard: db.prepare(`
-    SELECT u.id, u.username,
-           COALESCE((SELECT SUM(c.points) FROM solves s JOIN challenges c ON c.id = s.challenge_id WHERE s.user_id = u.id), 0)
-             - COALESCE((SELECT SUM(h.cost) FROM hint_unlocks hu JOIN hints h ON h.id = hu.hint_id WHERE hu.user_id = u.id), 0) AS score,
-           COALESCE((SELECT COUNT(*)      FROM solves s WHERE s.user_id = u.id), 0) AS solved_count,
-           COALESCE((SELECT MAX(s.solved_at) FROM solves s WHERE s.user_id = u.id), 0) AS last_solve
-    FROM users u
-    ORDER BY score DESC, last_solve ASC, u.username ASC
-    LIMIT 100
+  // ----- Raw data for JS-computed standings (dynamic scoring) -----
+  allUsers: db.prepare('SELECT id, username FROM users'),
+  allSolves: db.prepare('SELECT user_id, challenge_id, solved_at FROM solves'),
+  challengePoints: db.prepare('SELECT id, points FROM challenges'),
+  hintSpendByUser: db.prepare(`
+    SELECT hu.user_id AS uid, COALESCE(SUM(h.cost), 0) AS spent
+    FROM hint_unlocks hu
+    JOIN hints h ON h.id = hu.hint_id
+    GROUP BY hu.user_id
   `),
 
   // Solve count per challenge.
@@ -121,6 +121,7 @@ const stmts = {
     FROM solves
     GROUP BY challenge_id
   `),
+  solveCountForChallenge: db.prepare('SELECT COUNT(*) AS n FROM solves WHERE challenge_id = ?'),
 
   // First blood per challenge. SQLite's MIN() aggregate returns the row that
   // owns the minimum, so u.username is the earliest solver for each challenge.
@@ -133,34 +134,18 @@ const stmts = {
     GROUP BY s.challenge_id
   `),
 
-  // First-blood count per user (how many challenges they solved first).
-  firstBloodCounts: db.prepare(`
-    SELECT user_id, COUNT(*) AS n FROM (
-      SELECT challenge_id, user_id, MIN(solved_at) AS m
-      FROM solves
-      GROUP BY challenge_id
-    )
-    GROUP BY user_id
-  `),
-
   // Public profile lookup (no password hash).
   publicUserByUsername: db.prepare(
     'SELECT id, username, created_at FROM users WHERE username = ?'
   ),
 
-  // A user's solves, newest first, with challenge details.
+  // A user's solves, newest first, with challenge details (incl. id for value lookup).
   solvesForUser: db.prepare(`
-    SELECT c.slug, c.title, c.category, c.points, s.solved_at
+    SELECT c.id AS challenge_id, c.slug, c.title, c.category, c.points, s.solved_at
     FROM solves s
     JOIN challenges c ON c.id = s.challenge_id
     WHERE s.user_id = ?
     ORDER BY s.solved_at DESC, c.points DESC
-  `),
-
-  // A single user's net score (solved points minus unlocked hint costs).
-  scoreForUser: db.prepare(`
-    SELECT COALESCE((SELECT SUM(c.points) FROM solves s JOIN challenges c ON c.id = s.challenge_id WHERE s.user_id = @uid), 0)
-         - COALESCE((SELECT SUM(h.cost) FROM hint_unlocks hu JOIN hints h ON h.id = hu.hint_id WHERE hu.user_id = @uid), 0) AS score
   `),
 
   // Total hint points a user has spent.
@@ -169,19 +154,6 @@ const stmts = {
     FROM hint_unlocks hu
     JOIN hints h ON h.id = hu.hint_id
     WHERE hu.user_id = ?
-  `),
-
-  // Rank = 1 + number of users with a strictly higher net score.
-  rankForUser: db.prepare(`
-    WITH scores AS (
-      SELECT u.id AS uid,
-             COALESCE((SELECT SUM(c.points) FROM solves s JOIN challenges c ON c.id = s.challenge_id WHERE s.user_id = u.id), 0)
-               - COALESCE((SELECT SUM(h.cost) FROM hint_unlocks hu JOIN hints h ON h.id = hu.hint_id WHERE hu.user_id = u.id), 0) AS score
-      FROM users u
-    )
-    SELECT (SELECT COUNT(*) FROM scores b WHERE b.score > a.score) + 1 AS rank
-    FROM scores a
-    WHERE a.uid = ?
   `),
 
   // ----- Hints -----
@@ -197,15 +169,6 @@ const stmts = {
   unlockHint: db.prepare(
     'INSERT OR IGNORE INTO hint_unlocks (user_id, hint_id) VALUES (?, ?)'
   ),
-
-  firstBloodCountForUser: db.prepare(`
-    SELECT COUNT(*) AS n FROM (
-      SELECT challenge_id, user_id, MIN(solved_at) AS m
-      FROM solves
-      GROUP BY challenge_id
-    )
-    WHERE user_id = ?
-  `),
 };
 
 // Build lookup maps of { challenge_id -> solve count } and { challenge_id -> first-blood username }.
@@ -215,6 +178,70 @@ function challengeStatMaps() {
   const firstBloods = {};
   for (const r of stmts.firstBloods.all()) firstBloods[r.challenge_id] = r.fb_user;
   return { counts, firstBloods };
+}
+
+// Compute the full standings using dynamic scoring. Each solved challenge is
+// worth its *current* value (which decays with total solves), minus the points
+// a player has spent unlocking hints. Returns sorted rows (with rank) plus the
+// per-challenge current value map for reuse by callers.
+function computeStandings() {
+  const users = stmts.allUsers.all();
+  const solves = stmts.allSolves.all();
+  const pointsById = new Map(stmts.challengePoints.all().map((c) => [c.id, c.points]));
+
+  const solveCount = new Map();
+  for (const s of solves) solveCount.set(s.challenge_id, (solveCount.get(s.challenge_id) || 0) + 1);
+
+  const valueById = new Map();
+  for (const [cid, pts] of pointsById) valueById.set(cid, dynamicValue(pts, solveCount.get(cid) || 0));
+
+  // First blood (earliest solver) per challenge.
+  const firstBy = new Map();
+  for (const s of solves) {
+    const cur = firstBy.get(s.challenge_id);
+    if (!cur || s.solved_at < cur.at || (s.solved_at === cur.at && s.user_id < cur.user_id)) {
+      firstBy.set(s.challenge_id, { user_id: s.user_id, at: s.solved_at });
+    }
+  }
+  const fbCount = new Map();
+  for (const { user_id } of firstBy.values()) fbCount.set(user_id, (fbCount.get(user_id) || 0) + 1);
+
+  const hintSpend = new Map();
+  for (const r of stmts.hintSpendByUser.all()) hintSpend.set(r.uid, r.spent);
+
+  const solvesByUser = new Map();
+  for (const s of solves) {
+    if (!solvesByUser.has(s.user_id)) solvesByUser.set(s.user_id, []);
+    solvesByUser.get(s.user_id).push(s);
+  }
+
+  const rows = users.map((u) => {
+    const mine = solvesByUser.get(u.id) || [];
+    let score = 0;
+    let last = 0;
+    for (const s of mine) {
+      score += valueById.get(s.challenge_id) || 0;
+      if (s.solved_at > last) last = s.solved_at;
+    }
+    score -= hintSpend.get(u.id) || 0;
+    return {
+      id: u.id,
+      username: u.username,
+      score,
+      solved_count: mine.length,
+      last_solve: last,
+      first_bloods: fbCount.get(u.id) || 0,
+    };
+  });
+
+  rows.sort((a, b) =>
+    b.score - a.score ||
+    a.last_solve - b.last_solve ||
+    a.username.localeCompare(b.username)
+  );
+  rows.forEach((r, i) => { r.rank = i + 1; });
+
+  return { rows, valueById, solveCount };
 }
 
 // ---------- Public pages ----------
@@ -288,11 +315,13 @@ app.get('/challenges', requireAuth, (req, res) => {
   const { counts, firstBloods } = challengeStatMaps();
   const byCategory = {};
   for (const c of all) {
+    const solveCount = counts[c.id] || 0;
     (byCategory[c.category] ||= []).push({
       ...c,
       solved: solvedIds.has(c.id),
-      solveCount: counts[c.id] || 0,
+      solveCount,
       firstBlood: firstBloods[c.id] || null,
+      value: dynamicValue(c.points, solveCount),
     });
   }
   res.render('challenges', { byCategory });
@@ -302,8 +331,9 @@ app.get('/challenges/:slug', requireAuth, (req, res) => {
   const c = stmts.challengeBySlug.get(req.params.slug);
   if (!c) return res.status(404).render('404');
   const solved = !!stmts.solveExists.get(req.session.user.id, c.id);
-  const solveCount = (stmts.solveCounts.all().find((r) => r.challenge_id === c.id) || {}).n || 0;
+  const solveCount = stmts.solveCountForChallenge.get(c.id).n;
   const firstBlood = (stmts.firstBloods.all().find((r) => r.challenge_id === c.id) || {}).fb_user || null;
+  const currentValue = dynamicValue(c.points, solveCount);
 
   // Only send hint bodies for hints this user has already unlocked; locked
   // hint text never reaches the client.
@@ -318,6 +348,7 @@ app.get('/challenges/:slug', requireAuth, (req, res) => {
     solved,
     solveCount,
     firstBlood,
+    currentValue,
     hints,
   });
 });
@@ -356,7 +387,8 @@ app.post('/challenges/:slug/submit', requireAuth, (req, res) => {
   if (correct) {
     const info = stmts.insertSolve.run(req.session.user.id, c.id);
     if (info.changes > 0) {
-      flash(req, 'success', `Correct! +${c.points} points. 🐔`);
+      const earned = dynamicValue(c.points, stmts.solveCountForChallenge.get(c.id).n);
+      flash(req, 'success', `Correct! +${earned} points. 🐔`);
     } else {
       flash(req, 'success', 'Correct — but you already had this one.');
     }
@@ -532,11 +564,8 @@ app.get('/c/token-of-trust/api', (req, res) => {
 
 // ---------- Scoreboard ----------
 app.get('/scoreboard', (req, res) => {
-  const rows = stmts.scoreboard.all();
-  const fbCounts = {};
-  for (const r of stmts.firstBloodCounts.all()) fbCounts[r.user_id] = r.n;
-  const enriched = rows.map((r) => ({ ...r, first_bloods: fbCounts[r.id] || 0 }));
-  res.render('scoreboard', { rows: enriched });
+  const { rows } = computeStandings();
+  res.render('scoreboard', { rows: rows.slice(0, 100) });
 });
 
 // ---------- Profiles ----------
@@ -549,19 +578,24 @@ app.get('/u/:username', (req, res) => {
   const user = stmts.publicUserByUsername.get(req.params.username);
   if (!user) return res.status(404).render('404');
 
-  const solves = stmts.solvesForUser.all(user.id);
-  const score = stmts.scoreForUser.get({ uid: user.id }).score;
-  const rank = stmts.rankForUser.get(user.id).rank;
-  const firstBloods = stmts.firstBloodCountForUser.get(user.id).n;
+  const { rows, valueById } = computeStandings();
+  const standing = rows.find((r) => r.id === user.id)
+    || { score: 0, rank: rows.length + 1, first_bloods: 0 };
+
+  // Solve list with each challenge's current (dynamic) value.
+  const solves = stmts.solvesForUser.all(user.id).map((s) => ({
+    ...s,
+    value: valueById.get(s.challenge_id) ?? s.points,
+  }));
   const hintsSpent = stmts.hintsSpentForUser.get(user.id).spent;
   const totalChallenges = db.prepare('SELECT COUNT(*) AS n FROM challenges').get().n;
 
   res.render('profile', {
     profile: user,
     solves,
-    score,
-    rank,
-    firstBloods,
+    score: standing.score,
+    rank: standing.rank,
+    firstBloods: standing.first_bloods,
     hintsSpent,
     totalChallenges,
   });

@@ -19,7 +19,10 @@
     <a href="/challenges/<%= c.slug %>">
       <div class="cc-title"><%= c.title %></div>
       <div class="cc-meta">
-        <span class="pts"><%= c.points %> pts</span>
+        <span class="pts">
+          <%= c.value %> pts
+          <% if (c.value < c.points) { %><span class="pts-initial" title="Started at <%= c.points %>; decays as more solve it"><%= c.points %></span><% } %>
+        </span>
         <% if (c.solved) { %><span class="badge-solved">🥚 solved</span><% } %>
       </div>
       <div class="cc-stats">
