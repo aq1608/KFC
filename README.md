@@ -259,6 +259,10 @@ Keep the flag on the server. Store it only in `challenges.seed.js` (and, where a
 - Sessions use `httpOnly` and `sameSite: lax` cookies.
 - The `.gitignore` excludes the `data/` directory (databases) and `.env` files.
 
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup, how to add challenges, testing, and the branch/PR workflow.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
