@@ -5,6 +5,7 @@
 
   <header class="ch-header">
     <span class="cat-pill cat-<%= challenge.category %>"><%= challenge.category %></span>
+    <span class="diff-badge diff-<%= difficulty %>"><%= difficulty.charAt(0).toUpperCase() + difficulty.slice(1) %></span>
     <h1><%= challenge.title %></h1>
     <div class="ch-points">
       <%= currentValue %> points
