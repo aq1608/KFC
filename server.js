@@ -23,7 +23,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public'), { redirect: false }));
 
 app.use(session({
-  store: new SQLiteStore({ db: 'sessions.db', dir: path.join(__dirname, 'data') }),
+  store: new SQLiteStore({ db: 'sessions.db', dir: process.env.KFC_DATA_DIR || path.join(__dirname, 'data') }),
   secret: process.env.SESSION_SECRET || 'cluck-cluck-change-me-in-prod',
   resave: false,
   saveUninitialized: false,
