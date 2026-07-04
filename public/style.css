@@ -130,6 +130,26 @@ pre { padding: 0.75em 1em; overflow-x: auto; }
 .hero-stats { color: var(--brown); margin-bottom: 2em; }
 .hero-cta { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
 
+.hero-photo {
+  margin: 1.5rem auto;
+  max-width: 360px;
+}
+.hero-photo img {
+  width: 100%;
+  height: auto;
+  border: 6px solid #fff;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  transform: rotate(-1.5deg);
+  display: block;
+}
+.hero-photo figcaption {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
 .how { background: var(--cream-2); padding: 1.5rem 2rem; border-radius: var(--radius); }
 .how h2 { margin-top: 0; }
 .how ol { padding-left: 1.25rem; }
