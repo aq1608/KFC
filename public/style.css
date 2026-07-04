@@ -188,6 +188,13 @@ pre { padding: 0.75em 1em; overflow-x: auto; }
 .cc-title { font-weight: 800; font-size: 1.05rem; margin-bottom: 0.5rem; }
 .cc-meta { display: flex; align-items: center; justify-content: space-between; font-size: 0.9rem; color: var(--brown); }
 .pts { font-weight: 700; }
+.pts-initial {
+  text-decoration: line-through;
+  opacity: 0.55;
+  font-weight: 600;
+  margin-left: 0.25em;
+  font-size: 0.85em;
+}
 .badge-solved { color: #274d19; background: #d8ecc0; border-radius: 999px; padding: 0.1em 0.6em; font-weight: 700; font-size: 0.8rem; }
 
 /* ------- Challenge detail ------- */

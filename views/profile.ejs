@@ -65,7 +65,7 @@
         <li class="solve-row">
           <span class="cat-pill cat-<%= s.category %>"><%= catIcon[s.category] || '🎯' %> <%= s.category %></span>
           <a class="solve-title" href="/challenges/<%= s.slug %>"><%= s.title %></a>
-          <span class="solve-pts"><%= s.points %> pts</span>
+          <span class="solve-pts"><%= s.value %> pts</span>
           <span class="solve-when"><%= fmtDate(s.solved_at) %></span>
         </li>
       <% }) %>
