@@ -1,0 +1,50 @@
+name: Deploy (Render)
+
+# Deploy to Render on every push to main, but only after the test suite passes.
+# Enable it by adding a RENDER_DEPLOY_HOOK_URL secret (Render service → Settings →
+# Deploy Hook). Without that secret the deploy step skips gracefully.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-render-main
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    name: Deploy to Render
+    needs: test          # gate deploy on a green test suite
+    runs-on: ubuntu-latest
+    # Expose the secret as an env var so steps can conditionally run on it
+    # (GitHub does not allow `secrets.*` directly in `if:` conditions).
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Skip notice (no deploy hook configured)
+        if: env.RENDER_DEPLOY_HOOK_URL == ''
+        run: echo "::warning::RENDER_DEPLOY_HOOK_URL is not set — skipping deploy. Add it in Settings → Secrets → Actions to enable auto-deploy."
+
+      - name: Trigger Render deploy
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
