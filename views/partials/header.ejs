@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= typeof pageTitle !== 'undefined' ? pageTitle + ' — KFC' : 'KFC — Keep Finding Chickens' %></title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='28'>🐔</text></svg>">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">
+      <span class="brand-icon">🐔</span>
+      <span class="brand-name">KFC</span>
+      <span class="brand-sub">Keep Finding Chickens</span>
+    </a>
+    <nav class="site-nav">
+      <a href="/challenges">Challenges</a>
+      <a href="/scoreboard">Scoreboard</a>
+      <% if (currentUser) { %>
+        <span class="nav-user">👤 <%= currentUser.username %></span>
+        <form method="post" action="/logout" class="inline">
+          <button type="submit" class="link-button">Log out</button>
+        </form>
+      <% } else { %>
+        <a href="/login">Log in</a>
+        <a href="/register" class="btn-primary">Sign up</a>
+      <% } %>
+    </nav>
+  </header>
+
+  <main class="site-main">
+    <% if (flash) { %>
+      <div class="flash flash-<%= flash.type %>"><%= flash.message %></div>
+    <% } %>

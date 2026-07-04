@@ -1,0 +1,51 @@
+<%- include('partials/header', { pageTitle: 'Challenges' }) %>
+
+<h1>Challenges</h1>
+<p class="subhead">Pick your quarry. Solved challenges are marked with a 🥚.</p>
+
+<% const catOrder = ['web', 'crypto', 'osint']; %>
+<% const catLabel = { web: 'Web', crypto: 'Crypto', osint: 'OSINT' }; %>
+<% const catIcon  = { web: '🕸️', crypto: '🔐', osint: '🔎' }; %>
+
+<% for (const cat of catOrder) { %>
+  <% if (byCategory[cat]) { %>
+    <section class="cat-block">
+      <h2><span class="cat-icon"><%= catIcon[cat] %></span> <%= catLabel[cat] %></h2>
+      <ul class="challenge-grid">
+        <% for (const c of byCategory[cat]) { %>
+          <li class="challenge-card <%= c.solved ? 'solved' : '' %>">
+            <a href="/challenges/<%= c.slug %>">
+              <div class="cc-title"><%= c.title %></div>
+              <div class="cc-meta">
+                <span class="pts"><%= c.points %> pts</span>
+                <% if (c.solved) { %><span class="badge-solved">🥚 solved</span><% } %>
+              </div>
+            </a>
+          </li>
+        <% } %>
+      </ul>
+    </section>
+  <% } %>
+<% } %>
+
+<% const otherCats = Object.keys(byCategory).filter(c => !catOrder.includes(c)); %>
+<% for (const cat of otherCats) { %>
+  <section class="cat-block">
+    <h2><%= cat %></h2>
+    <ul class="challenge-grid">
+      <% for (const c of byCategory[cat]) { %>
+        <li class="challenge-card <%= c.solved ? 'solved' : '' %>">
+          <a href="/challenges/<%= c.slug %>">
+            <div class="cc-title"><%= c.title %></div>
+            <div class="cc-meta">
+              <span class="pts"><%= c.points %> pts</span>
+              <% if (c.solved) { %><span class="badge-solved">🥚 solved</span><% } %>
+            </div>
+          </a>
+        </li>
+      <% } %>
+    </ul>
+  </section>
+<% } %>
+
+<%- include('partials/footer') %>

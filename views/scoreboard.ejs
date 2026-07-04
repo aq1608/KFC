@@ -1,0 +1,33 @@
+<%- include('partials/header', { pageTitle: 'Scoreboard' }) %>
+
+<h1>Scoreboard</h1>
+<p class="subhead">The mightiest chicken hunters in the neighbourhood.</p>
+
+<% if (rows.length === 0) { %>
+  <p class="empty">No hunters yet. Be the first — <a href="/register">sign up</a>.</p>
+<% } else { %>
+  <table class="scoreboard">
+    <thead>
+      <tr>
+        <th class="rank">#</th>
+        <th>Hunter</th>
+        <th class="num">Solves</th>
+        <th class="num">Score</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% rows.forEach((r, i) => { %>
+        <tr class="<%= currentUser && currentUser.id === r.id ? 'me' : '' %>">
+          <td class="rank">
+            <% if (i === 0) { %>🥇<% } else if (i === 1) { %>🥈<% } else if (i === 2) { %>🥉<% } else { %><%= i + 1 %><% } %>
+          </td>
+          <td><%= r.username %></td>
+          <td class="num"><%= r.solved_count %></td>
+          <td class="num"><strong><%= r.score %></strong></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+<% } %>
+
+<%- include('partials/footer') %>

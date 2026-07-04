@@ -1,0 +1,19 @@
+<%- include('partials/header', { pageTitle: 'Log in' }) %>
+
+<section class="auth-card">
+  <h1>Log in</h1>
+  <form method="post" action="/login" autocomplete="on">
+    <label>
+      Username
+      <input name="username" required autofocus value="<%= username %>" autocomplete="username">
+    </label>
+    <label>
+      Password
+      <input name="password" type="password" required autocomplete="current-password">
+    </label>
+    <button type="submit" class="btn-primary">Log in</button>
+  </form>
+  <p class="auth-alt">No account? <a href="/register">Sign up</a>.</p>
+</section>
+
+<%- include('partials/footer') %>
