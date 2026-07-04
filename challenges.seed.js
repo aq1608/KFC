@@ -171,4 +171,111 @@ save you a lot of scrolling.</em>`,
     flag: 'CHICKEN{grep_the_gizzard}',
     asset_path: '/challenges/strings-attached/gizzard.dat',
   },
+
+  // ---------------- Reversing ----------------
+  {
+    slug: 'cluck-lock',
+    title: 'The Cluck Lock',
+    category: 'rev',
+    points: 100,
+    description: `We dumped the firmware from the coop's smart-lock. It never stores the passcode in plain sight —
+it keeps a scrambled lookup table and un-scrambles each character at runtime by XOR-ing with a
+constant mask.
+
+<a href="/challenges/cluck-lock/lock.js" download>Download <code>lock.js</code></a>, study how
+<code>check()</code> compares your input to <code>TABLE</code>, and work <em>backwards</em>: the
+correct passcode <strong>is</strong> the flag.
+
+<em>Hint: if <code>(char ^ MASK) === TABLE[i]</code>, then <code>char = TABLE[i] ^ MASK</code>.</em>`,
+    flag: 'CHICKEN{r3verse_the_cluck}',
+    asset_path: '/challenges/cluck-lock/lock.js',
+  },
+  {
+    slug: 'matryoshka-egg',
+    title: 'Matryoshka Egg',
+    category: 'rev',
+    points: 150,
+    description: `A secret was wrapped inside layers like a nesting egg. We recovered the exact encoder the
+chickens used — you just need to run it in reverse.
+
+<a href="/challenges/matryoshka-egg/egg.js" download>Download <code>egg.js</code></a>. It XORs the
+secret with a repeating key, reverses the bytes, then base64-encodes the lot. The wrapped
+<code>BLOB</code> is included in the file.
+
+Peel the layers in the opposite order to reveal the flag.`,
+    flag: 'CHICKEN{layers_upon_layers}',
+    asset_path: '/challenges/matryoshka-egg/egg.js',
+  },
+
+  // ---------------- Steganography ----------------
+  {
+    slug: 'invisible-ink',
+    title: 'Invisible Ink',
+    category: 'stego',
+    points: 100,
+    description: `A hen pinned up a perfectly ordinary sentence on the board — but she wrote part of it in
+<em>invisible ink</em>. Between the visible letters hide characters with zero width.
+
+Visit <a href="/c/invisible-ink/notice" target="_blank" rel="noopener">the invisible-ink notice</a>,
+copy the sentence (or read the page source), and extract the hidden zero-width characters.
+
+<em>Hint: two distinct zero-width characters — that's binary in disguise. 8 bits per letter.</em>`,
+    flag: 'CHICKEN{read_between_the_letters}',
+    asset_path: null,
+  },
+  {
+    slug: 'tail-feathers',
+    title: 'Tail Feathers',
+    category: 'stego',
+    points: 125,
+    description: `A rooster mailed us his portrait. The image opens fine in any viewer — but a proper PNG is
+supposed to <em>end</em> at its <code>IEND</code> chunk. This one keeps going.
+
+<img src="/challenges/tail-feathers/rooster.png" alt="A rooster's PNG portrait" style="max-width:100%;border:2px solid #b58900;border-radius:8px;margin:0.75rem 0;">
+
+<a href="/challenges/tail-feathers/rooster.png" download>Download the PNG</a> and inspect the bytes
+that come <strong>after</strong> the image ends.
+
+<em>Hint: <code>strings</code>, <code>binwalk</code>, or a hex editor will reveal the tail.</em>`,
+    flag: 'CHICKEN{feathers_hide_the_flag}',
+    asset_path: '/challenges/tail-feathers/rooster.png',
+  },
+
+  // ---------------- Misc ----------------
+  {
+    slug: 'morse-cluck',
+    title: 'Morse Cluck',
+    category: 'misc',
+    points: 75,
+    description: `The rooster on the barn roof has been crowing in a suspicious rhythm — long and short,
+long and short. We wrote it all down.
+
+<pre>-- --- .-. ... .  /  -- .- ... - . .-.  /  .... . -.</pre>
+
+Decode the Morse. <code>/</code> separates words. Submit it lowercase with underscores between
+words: <code>CHICKEN{word_word_word}</code>.
+
+<em>(A copy is also at <a href="/challenges/morse-cluck/transmission.txt" download>transmission.txt</a>.)</em>`,
+    flag: 'CHICKEN{morse_master_hen}',
+    asset_path: '/challenges/morse-cluck/transmission.txt',
+  },
+
+  // ---------------- Web (harder) ----------------
+  {
+    slug: 'egg-vault',
+    title: 'The Egg Vault',
+    category: 'web',
+    points: 150,
+    description: `The Egg Vault's public reading room lets visitors fetch notes by filename, like
+<a href="/c/egg-vault/read?file=welcome.txt" target="_blank" rel="noopener"><code>?file=welcome.txt</code></a>.
+The librarian swears the master key is locked away in a different room entirely — one level up
+from the reading room.
+
+The server naively joins your <code>file</code> parameter onto the reading-room path without
+checking where it lands. See if you can climb <em>out</em> of the reading room.
+
+<em>Hint: <code>../</code> is your friend. The vault sits beside the reading room.</em>`,
+    flag: 'CHICKEN{path_traversal_poultry}',
+    asset_path: null,
+  },
 ];

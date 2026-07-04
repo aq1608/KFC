@@ -218,6 +218,9 @@ pre { padding: 0.75em 1em; overflow-x: auto; }
 .cat-crypto    { background: #fbe6d4; color: #8a4b2c; }
 .cat-osint     { background: #eae1f7; color: #573a8a; }
 .cat-forensics { background: #d8ecdd; color: #2c7a4b; }
+.cat-rev       { background: #fbe0e6; color: #9a2c4e; }
+.cat-stego     { background: #e2e8f7; color: #3a4a8a; }
+.cat-misc      { background: #f7f0d8; color: #8a7a2c; }
 
 .ch-body { margin: 1.5rem 0; }
 .solved-banner {

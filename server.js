@@ -227,6 +227,38 @@ app.get('/c/header-hen/desk', (req, res) => {
   res.render('challenge-pages/header-hen-desk');
 });
 
+// Invisible Ink: a page whose sentence hides zero-width characters.
+app.get('/c/invisible-ink/notice', (req, res) => {
+  res.render('challenge-pages/invisible-ink-notice');
+});
+
+// The Egg Vault: a deliberately-vulnerable path-traversal demo.
+// IMPORTANT: this reads from an in-memory virtual filesystem ONLY. It never
+// touches the real disk, so the "traversal" is completely sandboxed and safe.
+const EGG_VAULT_VFS = {
+  'reading-room/welcome.txt':
+    'Welcome to the Egg Vault public reading room.\n' +
+    'Fetch notes with ?file=<name>. Try ?file=catalogue.txt.\n' +
+    'The master key is NOT kept here — it lives one level up, in the vault.',
+  'reading-room/catalogue.txt':
+    'Reading-room catalogue:\n - welcome.txt\n - catalogue.txt\n' +
+    '(Restricted material is stored outside this room.)',
+  'vault/master.key':
+    'EGG VAULT MASTER KEY\n====================\nCHICKEN{path_traversal_poultry}',
+};
+
+app.get('/c/egg-vault/read', (req, res) => {
+  const requested = String(req.query.file || 'welcome.txt');
+  // Naively join onto the reading-room base, then normalise — this is the "bug".
+  const resolved = path.posix.normalize(path.posix.join('reading-room', requested));
+  const content = EGG_VAULT_VFS[resolved];
+  res.type('text/plain');
+  if (content === undefined) {
+    return res.status(404).send(`No such note: ${resolved}`);
+  }
+  res.send(`[${resolved}]\n\n${content}\n`);
+});
+
 // ---------- Scoreboard ----------
 app.get('/scoreboard', (req, res) => {
   const rows = stmts.scoreboard.all();
