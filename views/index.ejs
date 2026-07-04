@@ -1,0 +1,33 @@
+<%- include('partials/header', { pageTitle: 'Home' }) %>
+
+<section class="hero">
+  <h1>🐔 Keep Finding Chickens</h1>
+  <p class="tagline">
+    A local capture-the-flag competition, inspired by the alarming number of
+    chickens taking up residence in the neighbourhood.
+  </p>
+  <p class="hero-stats">
+    <strong><%= totalChallenges %></strong> challenges ·
+    <strong><%= totalPlayers %></strong> hunters signed up
+  </p>
+  <div class="hero-cta">
+    <% if (currentUser) { %>
+      <a class="btn-primary" href="/challenges">Continue hunting →</a>
+    <% } else { %>
+      <a class="btn-primary" href="/register">Sign up</a>
+      <a class="btn-ghost" href="/login">Log in</a>
+    <% } %>
+  </div>
+</section>
+
+<section class="how">
+  <h2>How this works</h2>
+  <ol>
+    <li>Sign up with a username &mdash; you don't need an email.</li>
+    <li>Pick a challenge. Solve it however you can: view source, decode, look closely.</li>
+    <li>Submit the flag. Flags always look like <code>CHICKEN{something_like_this}</code>.</li>
+    <li>Rack up points and climb the <a href="/scoreboard">scoreboard</a>.</li>
+  </ol>
+</section>
+
+<%- include('partials/footer') %>

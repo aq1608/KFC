@@ -1,0 +1,38 @@
+<%- include('partials/header', { pageTitle: challenge.title }) %>
+
+<article class="challenge-detail">
+  <p class="crumbs"><a href="/challenges">← All challenges</a></p>
+
+  <header class="ch-header">
+    <span class="cat-pill cat-<%= challenge.category %>"><%= challenge.category %></span>
+    <h1><%= challenge.title %></h1>
+    <div class="ch-points"><%= challenge.points %> points</div>
+    <div class="ch-stats">
+      <span title="Total solves"><%= solveCount %> solve<%= solveCount === 1 ? '' : 's' %></span>
+      <span class="dot">·</span>
+      <% if (firstBlood) { %>
+        <span title="First blood">🩸 First blood: <a href="/u/<%= encodeURIComponent(firstBlood) %>"><%= firstBlood %></a></span>
+      <% } else { %>
+        <span title="Nobody has solved this yet">🩸 First blood up for grabs</span>
+      <% } %>
+    </div>
+  </header>
+
+  <div class="ch-body">
+    <%- challenge.description %>
+  </div>
+
+  <% if (solved) { %>
+    <div class="solved-banner">🥚 You've solved this one. Nice work.</div>
+  <% } %>
+
+  <form method="post" action="/challenges/<%= challenge.slug %>/submit" class="flag-form">
+    <label>
+      Submit flag
+      <input name="flag" placeholder="CHICKEN{...}" autocomplete="off" spellcheck="false" required>
+    </label>
+    <button type="submit" class="btn-primary">Submit</button>
+  </form>
+</article>
+
+<%- include('partials/footer') %>

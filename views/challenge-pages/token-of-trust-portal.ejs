@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Henhouse API Portal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="site-main">
+    <article class="auth-card" style="max-width:40rem;">
+      <h1>&#128273; Henhouse API Portal</h1>
+      <p>Here is your freshly-issued <strong>guest</strong> token (signed HS256):</p>
+      <pre style="white-space:pre-wrap; word-break:break-all;"><%= guestToken %></pre>
+      <p style="color:var(--ink-soft); font-size:0.95rem;">
+        Present it to the API and it'll greet you as a guest:
+      </p>
+      <pre>/c/token-of-trust/api?token=&lt;your token&gt;</pre>
+      <p style="color:var(--ink-soft); font-size:0.95rem;">
+        A JWT is just <code>base64url(header).base64url(payload).signature</code>. You can't fake
+        the HS256 signature without the secret &mdash; but the verifier trusts whatever the
+        <strong>header's <code>alg</code></strong> claims. Decode the three parts, think about what
+        an attacker could set <code>alg</code> to, and rebuild a token whose payload says
+        <code>"role":"admin"</code>.
+      </p>
+      <p style="margin-top:1.5rem;"><a href="/challenges/token-of-trust">&larr; Back to the challenge</a></p>
+    </article>
+  </main>
+</body>
+</html>

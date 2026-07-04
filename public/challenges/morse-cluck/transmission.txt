@@ -1,0 +1,5 @@
+Intercepted rooster transmission (dots and dashes):
+
+-- --- .-. ... .  /  -- .- ... - . .-.  /  .... . -.
+
+(  /  separates words. Flag format: CHICKEN{word_word_word} in lowercase.)

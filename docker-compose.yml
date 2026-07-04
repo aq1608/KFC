@@ -1,0 +1,19 @@
+services:
+  kfc:
+    build: .
+    image: kfc:latest
+    container_name: kfc
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Override these in production — do not ship the defaults.
+      PORT: 3000
+      SESSION_SECRET: ${SESSION_SECRET:-cluck-cluck-change-me-in-prod}
+      TOT_SECRET: ${TOT_SECRET:-coop-signing-key-do-not-share}
+    volumes:
+      # Persist the SQLite databases across container restarts.
+      - kfc-data:/app/data
+
+volumes:
+  kfc-data:

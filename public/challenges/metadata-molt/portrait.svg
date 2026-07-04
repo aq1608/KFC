@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Rooster self-portrait. Painted during the great molt of 2026.
+  (Psst - artists always sign their work somewhere. Keep reading the file...)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:dc="http://purl.org/dc/elements/1.1/"
+     viewBox="0 0 480 480" width="480" height="480">
+  <metadata>
+    <dc:title>Rooster, Molting (Self-Portrait)</dc:title>
+    <dc:creator>Reginald P. Rooster</dc:creator>
+    <dc:date>2026-03-14</dc:date>
+    <dc:description>CHICKEN{hidden_in_the_metadata}</dc:description>
+    <dc:rights>Painted with one wing. Please do not peck.</dc:rights>
+  </metadata>
+
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%">
+      <stop offset="0" stop-color="#fff3d6"/>
+      <stop offset="1" stop-color="#e9c98f"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="480" height="480" fill="url(#bg)"/>
+
+  <!-- ornate frame -->
+  <rect x="14" y="14" width="452" height="452" fill="none" stroke="#8a5a2b" stroke-width="10" rx="10"/>
+  <rect x="26" y="26" width="428" height="428" fill="none" stroke="#c98b4c" stroke-width="3" rx="8"/>
+
+  <!-- rooster portrait -->
+  <g transform="translate(240,260)">
+    <!-- body -->
+    <ellipse cx="0" cy="30" rx="95" ry="80" fill="#f6e4b8" stroke="#c9b06b" stroke-width="3"/>
+    <!-- tail feathers -->
+    <path d="M -80 10 q -70 -30 -95 -95 q 55 15 105 55 z" fill="#3f7a2a"/>
+    <path d="M -80 20 q -60 -10 -80 -60 q 50 10 90 40 z" fill="#4d9235"/>
+    <!-- head -->
+    <circle cx="55" cy="-55" r="40" fill="#f6e4b8" stroke="#c9b06b" stroke-width="3"/>
+    <!-- comb -->
+    <path d="M 40 -95 q 6 -18 16 -8 q 6 -18 16 -6 q 6 -14 14 0 q 4 10 -4 16 z" fill="#c1272d"/>
+    <!-- wattle -->
+    <path d="M 58 -22 q 10 14 0 26 q -10 -6 -8 -22 z" fill="#c1272d"/>
+    <!-- beak -->
+    <polygon points="92,-52 118,-46 92,-40" fill="#f2b134"/>
+    <!-- eye -->
+    <circle cx="66" cy="-62" r="5" fill="#2b1d0e"/>
+    <circle cx="68" cy="-64" r="1.6" fill="#fff"/>
+    <!-- wing -->
+    <path d="M -20 10 q 40 -45 85 -8 q -30 34 -85 12 z" fill="#efd89b" stroke="#c9b06b" stroke-width="2"/>
+    <!-- legs -->
+    <line x1="-18" y1="105" x2="-18" y2="140" stroke="#f2b134" stroke-width="6"/>
+    <line x1="18"  y1="105" x2="18"  y2="140" stroke="#f2b134" stroke-width="6"/>
+  </g>
+
+  <text x="240" y="452" text-anchor="middle" font-family="serif" font-size="14" fill="#5c4429" font-style="italic">
+    "Rooster, Molting" — a self-portrait
+  </text>
+</svg>

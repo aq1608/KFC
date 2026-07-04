@@ -1,0 +1,7 @@
+# Keep Finding Chickens — crawler instructions
+# Dear web crawlers: please do not index the following. Nothing to see. Definitely no eggs.
+
+User-agent: *
+Disallow: /c/robots-roost/secret-nest
+Disallow: /data/
+Allow: /

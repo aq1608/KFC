@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" width="640" height="400">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a7dcf0"/>
+      <stop offset="1" stop-color="#e6f5ff"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8ac66a"/>
+      <stop offset="1" stop-color="#4d8a34"/>
+    </linearGradient>
+  </defs>
+
+  <!-- sky -->
+  <rect x="0" y="0" width="640" height="260" fill="url(#sky)"/>
+  <!-- sun -->
+  <circle cx="530" cy="70" r="34" fill="#ffe17a"/>
+  <!-- cloud -->
+  <g fill="#ffffff" opacity="0.9">
+    <ellipse cx="120" cy="80" rx="45" ry="18"/>
+    <ellipse cx="155" cy="70" rx="35" ry="20"/>
+    <ellipse cx="90"  cy="72" rx="28" ry="16"/>
+  </g>
+
+  <!-- ground -->
+  <rect x="0" y="260" width="640" height="140" fill="url(#ground)"/>
+
+  <!-- fence -->
+  <g stroke="#8a5a2b" stroke-width="4" fill="#c98b4c">
+    <rect x="20"  y="230" width="12" height="70"/>
+    <rect x="80"  y="230" width="12" height="70"/>
+    <rect x="140" y="230" width="12" height="70"/>
+    <rect x="200" y="230" width="12" height="70"/>
+    <line x1="15" y1="250" x2="220" y2="250"/>
+    <line x1="15" y1="280" x2="220" y2="280"/>
+  </g>
+
+  <!-- three bushes -->
+  <g>
+    <ellipse cx="330" cy="310" rx="45" ry="28" fill="#3f7a2a"/>
+    <ellipse cx="325" cy="300" rx="38" ry="22" fill="#4d9235"/>
+    <text x="330" y="315" font-size="14" text-anchor="middle" fill="#e7fbd2" font-family="sans-serif">1</text>
+  </g>
+  <g>
+    <ellipse cx="440" cy="315" rx="50" ry="30" fill="#3f7a2a"/>
+    <ellipse cx="435" cy="305" rx="42" ry="24" fill="#4d9235"/>
+    <text x="440" y="320" font-size="14" text-anchor="middle" fill="#e7fbd2" font-family="sans-serif">2</text>
+  </g>
+  <g>
+    <!-- The 3rd bush — clue hidden here -->
+    <ellipse cx="555" cy="310" rx="48" ry="29" fill="#3f7a2a"/>
+    <ellipse cx="550" cy="300" rx="40" ry="23" fill="#4d9235"/>
+    <text x="555" y="315" font-size="14" text-anchor="middle" fill="#e7fbd2" font-family="sans-serif">3</text>
+    <!-- micro-text hidden on the bush; deliberately tiny/blend-y -->
+    <text x="555" y="345" font-size="6" text-anchor="middle" fill="#2a5218" font-family="monospace" opacity="0.85">
+      under_the_third_bush
+    </text>
+  </g>
+
+  <!-- hen -->
+  <g transform="translate(150,240)">
+    <!-- body -->
+    <ellipse cx="0" cy="0" rx="42" ry="30" fill="#fff8e0" stroke="#c9b06b" stroke-width="2"/>
+    <!-- head -->
+    <circle cx="35" cy="-18" r="18" fill="#fff8e0" stroke="#c9b06b" stroke-width="2"/>
+    <!-- comb -->
+    <path d="M 30 -33 q 3 -8 8 -4 q 3 -8 8 -2 q 3 -6 6 0 z" fill="#c1272d"/>
+    <!-- beak -->
+    <polygon points="52,-16 62,-14 52,-12" fill="#f2b134"/>
+    <!-- eye -->
+    <circle cx="42" cy="-22" r="2.2" fill="#2b1d0e"/>
+    <!-- wing -->
+    <path d="M -10 -5 q 15 -18 32 -3 q -12 12 -32 3 z" fill="#f0e6bd" stroke="#c9b06b" stroke-width="1.5"/>
+    <!-- tail -->
+    <path d="M -35 -8 q -15 -5 -22 8 q 12 5 22 4 z" fill="#f0e6bd" stroke="#c9b06b" stroke-width="1.5"/>
+    <!-- legs -->
+    <line x1="-8" y1="28" x2="-8" y2="46" stroke="#f2b134" stroke-width="3"/>
+    <line x1="10" y1="28" x2="10" y2="46" stroke="#f2b134" stroke-width="3"/>
+    <path d="M -14 46 L -8 44 L -2 46" stroke="#f2b134" stroke-width="2" fill="none"/>
+    <path d="M 4 46 L 10 44 L 16 46" stroke="#f2b134" stroke-width="2" fill="none"/>
+  </g>
+
+  <!-- caption -->
+  <text x="320" y="390" text-anchor="middle" font-family="Nunito, sans-serif" font-size="12" fill="#2b1d0e" opacity="0.6">
+    a photograph, left behind by a hen
+  </text>
+</svg>

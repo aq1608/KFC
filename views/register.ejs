@@ -1,0 +1,20 @@
+<%- include('partials/header', { pageTitle: 'Sign up' }) %>
+
+<section class="auth-card">
+  <h1>Sign up</h1>
+  <form method="post" action="/register" autocomplete="on">
+    <label>
+      Username <small>(3–24 chars: letters, numbers, _ or -)</small>
+      <input name="username" required autofocus value="<%= username %>"
+             pattern="[A-Za-z0-9_\-]{3,24}" autocomplete="username">
+    </label>
+    <label>
+      Password <small>(at least 6 characters)</small>
+      <input name="password" type="password" required minlength="6" autocomplete="new-password">
+    </label>
+    <button type="submit" class="btn-primary">Create account</button>
+  </form>
+  <p class="auth-alt">Already have an account? <a href="/login">Log in</a>.</p>
+</section>
+
+<%- include('partials/footer') %>
