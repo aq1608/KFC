@@ -1,0 +1,56 @@
+name: Deploy
+
+# Deploy to Fly.io on every push to main, but only after the test suite passes.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never run two deploys at once; queue them instead of cancelling.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    name: Deploy to Fly.io
+    needs: test          # gate deploy on a green test suite
+    runs-on: ubuntu-latest
+    # Expose the secret as an env var so steps can conditionally run on it
+    # (GitHub does not allow `secrets.*` directly in `if:` conditions).
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Skip notice (no token configured)
+        if: env.FLY_API_TOKEN == ''
+        run: echo "::warning::FLY_API_TOKEN is not set — skipping deploy. Add it in Settings → Secrets → Actions to enable auto-deploy."
+
+      - name: Set up flyctl
+        if: env.FLY_API_TOKEN != ''
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        if: env.FLY_API_TOKEN != ''
+        run: flyctl deploy --remote-only
