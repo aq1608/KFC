@@ -7,43 +7,38 @@
 <% const catLabel = { web: 'Web', pwn: 'Pwn', crypto: 'Crypto', rev: 'Reversing', stego: 'Stego', forensics: 'Forensics', osint: 'OSINT', misc: 'Misc' }; %>
 <% const catIcon  = { web: '🕸️', pwn: '💥', crypto: '🔐', rev: '🔧', stego: '🖼️', forensics: '🧪', osint: '🔎', misc: '🎲' }; %>
 
-<% for (const cat of catOrder) { %>
-  <% if (byCategory[cat]) { %>
-    <section class="cat-block">
-      <h2><span class="cat-icon"><%= catIcon[cat] %></span> <%= catLabel[cat] %></h2>
-      <ul class="challenge-grid">
-        <% for (const c of byCategory[cat]) { %>
-          <li class="challenge-card <%= c.solved ? 'solved' : '' %>">
-            <a href="/challenges/<%= c.slug %>">
-              <div class="cc-title"><%= c.title %></div>
-              <div class="cc-meta">
-                <span class="pts"><%= c.points %> pts</span>
-                <% if (c.solved) { %><span class="badge-solved">🥚 solved</span><% } %>
-              </div>
-            </a>
-          </li>
+<%
+  // Render the known categories in order, then any leftovers alphabetically.
+  const knownCats = catOrder.filter((c) => byCategory[c]);
+  const otherCats = Object.keys(byCategory).filter((c) => !catOrder.includes(c)).sort();
+  const renderCats = knownCats.concat(otherCats);
+%>
+
+<% function card(c) { %>
+  <li class="challenge-card <%= c.solved ? 'solved' : '' %>">
+    <a href="/challenges/<%= c.slug %>">
+      <div class="cc-title"><%= c.title %></div>
+      <div class="cc-meta">
+        <span class="pts"><%= c.points %> pts</span>
+        <% if (c.solved) { %><span class="badge-solved">🥚 solved</span><% } %>
+      </div>
+      <div class="cc-stats">
+        <span class="cc-solves" title="Total solves"><%= c.solveCount %> solve<%= c.solveCount === 1 ? '' : 's' %></span>
+        <% if (c.firstBlood) { %>
+          <span class="cc-firstblood" title="First blood">🩸 <a href="/u/<%= encodeURIComponent(c.firstBlood) %>"><%= c.firstBlood %></a></span>
+        <% } else { %>
+          <span class="cc-firstblood cc-unsolved" title="Nobody has solved this yet">🩸 unclaimed</span>
         <% } %>
-      </ul>
-    </section>
-  <% } %>
+      </div>
+    </a>
+  </li>
 <% } %>
 
-<% const otherCats = Object.keys(byCategory).filter(c => !catOrder.includes(c)); %>
-<% for (const cat of otherCats) { %>
+<% for (const cat of renderCats) { %>
   <section class="cat-block">
-    <h2><%= cat %></h2>
+    <h2><span class="cat-icon"><%= catIcon[cat] || '🎯' %></span> <%= catLabel[cat] || cat %></h2>
     <ul class="challenge-grid">
-      <% for (const c of byCategory[cat]) { %>
-        <li class="challenge-card <%= c.solved ? 'solved' : '' %>">
-          <a href="/challenges/<%= c.slug %>">
-            <div class="cc-title"><%= c.title %></div>
-            <div class="cc-meta">
-              <span class="pts"><%= c.points %> pts</span>
-              <% if (c.solved) { %><span class="badge-solved">🥚 solved</span><% } %>
-            </div>
-          </a>
-        </li>
-      <% } %>
+      <% for (const c of byCategory[cat]) { card(c); } %>
     </ul>
   </section>
 <% } %>

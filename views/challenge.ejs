@@ -7,6 +7,15 @@
     <span class="cat-pill cat-<%= challenge.category %>"><%= challenge.category %></span>
     <h1><%= challenge.title %></h1>
     <div class="ch-points"><%= challenge.points %> points</div>
+    <div class="ch-stats">
+      <span title="Total solves"><%= solveCount %> solve<%= solveCount === 1 ? '' : 's' %></span>
+      <span class="dot">·</span>
+      <% if (firstBlood) { %>
+        <span title="First blood">🩸 First blood: <a href="/u/<%= encodeURIComponent(firstBlood) %>"><%= firstBlood %></a></span>
+      <% } else { %>
+        <span title="Nobody has solved this yet">🩸 First blood up for grabs</span>
+      <% } %>
+    </div>
   </header>
 
   <div class="ch-body">

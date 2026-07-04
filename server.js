@@ -17,7 +17,10 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 app.use(express.urlencoded({ extended: false }));
-app.use(express.static(path.join(__dirname, 'public')));
+// redirect:false stops serve-static from 301-redirecting `/challenges` to
+// `/challenges/` just because a public/challenges/ asset directory exists —
+// that route is handled by the app below. Static files still serve normally.
+app.use(express.static(path.join(__dirname, 'public'), { redirect: false }));
 
 app.use(session({
   store: new SQLiteStore({ db: 'sessions.db', dir: path.join(__dirname, 'data') }),
@@ -93,7 +96,89 @@ const stmts = {
     ORDER BY score DESC, last_solve ASC, u.username ASC
     LIMIT 100
   `),
+
+  // Solve count per challenge.
+  solveCounts: db.prepare(`
+    SELECT challenge_id, COUNT(*) AS n
+    FROM solves
+    GROUP BY challenge_id
+  `),
+
+  // First blood per challenge. SQLite's MIN() aggregate returns the row that
+  // owns the minimum, so u.username is the earliest solver for each challenge.
+  firstBloods: db.prepare(`
+    SELECT s.challenge_id,
+           u.username AS fb_user,
+           MIN(s.solved_at) AS fb_at
+    FROM solves s
+    JOIN users u ON u.id = s.user_id
+    GROUP BY s.challenge_id
+  `),
+
+  // First-blood count per user (how many challenges they solved first).
+  firstBloodCounts: db.prepare(`
+    SELECT user_id, COUNT(*) AS n FROM (
+      SELECT challenge_id, user_id, MIN(solved_at) AS m
+      FROM solves
+      GROUP BY challenge_id
+    )
+    GROUP BY user_id
+  `),
+
+  // Public profile lookup (no password hash).
+  publicUserByUsername: db.prepare(
+    'SELECT id, username, created_at FROM users WHERE username = ?'
+  ),
+
+  // A user's solves, newest first, with challenge details.
+  solvesForUser: db.prepare(`
+    SELECT c.slug, c.title, c.category, c.points, s.solved_at
+    FROM solves s
+    JOIN challenges c ON c.id = s.challenge_id
+    WHERE s.user_id = ?
+    ORDER BY s.solved_at DESC, c.points DESC
+  `),
+
+  // A single user's total score.
+  scoreForUser: db.prepare(`
+    SELECT COALESCE(SUM(c.points), 0) AS score
+    FROM solves s
+    JOIN challenges c ON c.id = s.challenge_id
+    WHERE s.user_id = ?
+  `),
+
+  // Rank = 1 + number of users with a strictly higher score.
+  rankForUser: db.prepare(`
+    WITH scores AS (
+      SELECT u.id AS uid, COALESCE(SUM(c.points), 0) AS score
+      FROM users u
+      LEFT JOIN solves s     ON s.user_id = u.id
+      LEFT JOIN challenges c ON c.id = s.challenge_id
+      GROUP BY u.id
+    )
+    SELECT (SELECT COUNT(*) FROM scores b WHERE b.score > a.score) + 1 AS rank
+    FROM scores a
+    WHERE a.uid = ?
+  `),
+
+  firstBloodCountForUser: db.prepare(`
+    SELECT COUNT(*) AS n FROM (
+      SELECT challenge_id, user_id, MIN(solved_at) AS m
+      FROM solves
+      GROUP BY challenge_id
+    )
+    WHERE user_id = ?
+  `),
 };
+
+// Build lookup maps of { challenge_id -> solve count } and { challenge_id -> first-blood username }.
+function challengeStatMaps() {
+  const counts = {};
+  for (const r of stmts.solveCounts.all()) counts[r.challenge_id] = r.n;
+  const firstBloods = {};
+  for (const r of stmts.firstBloods.all()) firstBloods[r.challenge_id] = r.fb_user;
+  return { counts, firstBloods };
+}
 
 // ---------- Public pages ----------
 app.get('/', (req, res) => {
@@ -163,9 +248,15 @@ app.get('/challenges', requireAuth, (req, res) => {
   const solvedIds = new Set(
     stmts.solvedIdsForUser.all(req.session.user.id).map((r) => r.challenge_id)
   );
+  const { counts, firstBloods } = challengeStatMaps();
   const byCategory = {};
   for (const c of all) {
-    (byCategory[c.category] ||= []).push({ ...c, solved: solvedIds.has(c.id) });
+    (byCategory[c.category] ||= []).push({
+      ...c,
+      solved: solvedIds.has(c.id),
+      solveCount: counts[c.id] || 0,
+      firstBlood: firstBloods[c.id] || null,
+    });
   }
   res.render('challenges', { byCategory });
 });
@@ -174,9 +265,13 @@ app.get('/challenges/:slug', requireAuth, (req, res) => {
   const c = stmts.challengeBySlug.get(req.params.slug);
   if (!c) return res.status(404).render('404');
   const solved = !!stmts.solveExists.get(req.session.user.id, c.id);
+  const solveCount = (stmts.solveCounts.all().find((r) => r.challenge_id === c.id) || {}).n || 0;
+  const firstBlood = (stmts.firstBloods.all().find((r) => r.challenge_id === c.id) || {}).fb_user || null;
   res.render('challenge', {
     challenge: { id: c.id, slug: c.slug, title: c.title, category: c.category, points: c.points, description: c.description },
     solved,
+    solveCount,
+    firstBlood,
   });
 });
 
@@ -367,7 +462,36 @@ app.get('/c/token-of-trust/api', (req, res) => {
 // ---------- Scoreboard ----------
 app.get('/scoreboard', (req, res) => {
   const rows = stmts.scoreboard.all();
-  res.render('scoreboard', { rows });
+  const fbCounts = {};
+  for (const r of stmts.firstBloodCounts.all()) fbCounts[r.user_id] = r.n;
+  const enriched = rows.map((r) => ({ ...r, first_bloods: fbCounts[r.id] || 0 }));
+  res.render('scoreboard', { rows: enriched });
+});
+
+// ---------- Profiles ----------
+// Convenience redirect to the logged-in user's own profile.
+app.get('/me', requireAuth, (req, res) => {
+  res.redirect(`/u/${encodeURIComponent(req.session.user.username)}`);
+});
+
+app.get('/u/:username', (req, res) => {
+  const user = stmts.publicUserByUsername.get(req.params.username);
+  if (!user) return res.status(404).render('404');
+
+  const solves = stmts.solvesForUser.all(user.id);
+  const score = stmts.scoreForUser.get(user.id).score;
+  const rank = stmts.rankForUser.get(user.id).rank;
+  const firstBloods = stmts.firstBloodCountForUser.get(user.id).n;
+  const totalChallenges = db.prepare('SELECT COUNT(*) AS n FROM challenges').get().n;
+
+  res.render('profile', {
+    profile: user,
+    solves,
+    score,
+    rank,
+    firstBloods,
+    totalChallenges,
+  });
 });
 
 // ---------- 404 ----------
