@@ -370,6 +370,16 @@ app.get('/scoreboard', (req, res) => {
   res.render('scoreboard', { rows });
 });
 
+// ---------- Health check (used by Docker / load balancers) ----------
+app.get('/healthz', (req, res) => {
+  try {
+    const { n } = db.prepare('SELECT COUNT(*) AS n FROM challenges').get();
+    res.json({ status: 'ok', challenges: n, uptime: Math.round(process.uptime()) });
+  } catch (err) {
+    res.status(503).json({ status: 'error', error: err.message });
+  }
+});
+
 // ---------- 404 ----------
 app.use((req, res) => res.status(404).render('404'));
 

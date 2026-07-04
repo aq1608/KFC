@@ -59,6 +59,26 @@ npm run dev
 
 The server starts on **http://localhost:3000** by default. Set the `PORT` environment variable to use a different port.
 
+### Running with Docker
+
+The repository ships a multi-stage `Dockerfile` and a `docker-compose.yml`.
+
+```bash
+# Build and run with Docker Compose (recommended)
+docker compose up --build
+
+# ...or with plain Docker
+docker build -t kfc .
+docker run -p 3000:3000 -v kfc-data:/app/data kfc
+```
+
+The app then listens on **http://localhost:3000**. Notes:
+
+- The image runs as the non-root `node` user.
+- SQLite databases live in `/app/data`, mounted as a named volume (`kfc-data`) so solves and sessions survive container restarts.
+- A `HEALTHCHECK` polls `/healthz`, which reports `{ "status": "ok", ... }` once the app and database are ready.
+- Set `SESSION_SECRET` and `TOT_SECRET` via the environment (see `docker-compose.yml`) before exposing the app publicly.
+
 ### Environment Variables
 
 | Variable         | Description                                       | Default                           |
