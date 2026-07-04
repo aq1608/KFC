@@ -1,0 +1,32 @@
+# Implementation Plan
+
+- [x] 1. Core app scaffold: Express, EJS views, session, SQLite schema + seeding
+  - _Requirements: 1, 2, 9_
+- [x] 2. Auth: register/login/logout with bcrypt and validation
+  - _Requirements: 1_
+- [x] 3. Challenge catalogue: seed file, listing by category, detail view, flag submit
+  - _Requirements: 2_
+- [x] 4. Seed 20 challenges across 8 categories (with a reproducible asset generator)
+  - _Requirements: 2_
+- [x] 5. Scoreboard, player profiles, and first-blood + solve-count tracking
+  - _Requirements: 7_
+- [x] 6. Hints: schema, unlock route, cost deducted from net score, no leak of locked bodies
+  - _Requirements: 4_
+- [x] 7. Flag-submission rate limiting
+  - _Requirements: 2.4_
+- [x] 8. Dynamic (decaying) scoring in `scoring.js`; net score = values − hint costs
+  - _Requirements: 3_
+- [x] 9. Difficulty tiers + listing filters
+  - _Requirements: 2.1_
+- [x] 10. Admin dashboard (env-gated) with reset/delete moderation
+  - _Requirements: 8_
+- [x] 11. Prerequisite gating (locked challenges hide the puzzle; enforced server-side)
+  - _Requirements: 5_
+- [x] 12. Post-solve writeups (revealed only after solving)
+  - _Requirements: 6_
+- [x] 13. Test suite (node:test) + GitHub Actions CI
+  - _Requirements: all_
+- [x] 14. Optional Postgres backend behind an async `store/` abstraction (SQLite default)
+  - _Requirements: 9_
+- [x] 15. Deployment: Dockerfile + /healthz; Fly / Render (free + Postgres) / Railway configs
+  - _Requirements: 9_

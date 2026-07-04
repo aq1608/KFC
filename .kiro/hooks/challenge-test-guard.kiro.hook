@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "name": "Challenge test guard",
+  "description": "When the challenge seed or a store backend changes, remind me to keep both backends in sync and prove every flag is still reachable.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "challenges.seed.js",
+      "store/*.js"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "The challenge seed or a data-store backend was edited. Please: (1) if a query changed, confirm it was updated in BOTH store/sqlite.js and store/pg.js with identical behaviour; (2) ensure every challenge still has a test proving its flag is reachable, adding one for any new challenge; (3) run `npm test` and report the result. Do not expose any flag in client-visible code."
+  }
+}
