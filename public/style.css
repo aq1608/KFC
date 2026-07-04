@@ -572,3 +572,46 @@ pre { padding: 0.75em 1em; overflow-x: auto; }
 .filter-btn:hover { border-color: var(--brown); }
 .filter-btn.active { background: var(--coop-red); border-color: var(--coop-red); color: var(--cream); }
 .no-matches { color: var(--ink-soft); font-style: italic; text-align: center; padding: 2rem; }
+
+
+/* ------- Prerequisites (locked challenges) ------- */
+.challenge-card.locked {
+  opacity: 0.75;
+}
+.cc-locked {
+  display: block;
+  background: repeating-linear-gradient(45deg, #f3ecd6 0 10px, #efe6c9 10px 20px);
+  border: 2px dashed var(--brown);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  height: 100%;
+  color: var(--ink-soft);
+}
+.cc-locked .cc-title { color: var(--ink-soft); }
+.lock-icon { margin-left: 0.35em; }
+.cc-req { font-size: 0.85rem; margin-top: 0.5rem; font-weight: 700; color: var(--brown); }
+
+.locked-panel {
+  background: var(--cream-2);
+  border: 2px dashed var(--brown);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin: 1.5rem 0;
+}
+.locked-panel h2 { margin-top: 0; }
+.req-list { list-style: none; padding: 0; margin: 0.75rem 0 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.req-list li { font-weight: 700; }
+.req-list .req-done { color: #2c7a4b; }
+.req-note { color: var(--ink-soft); font-size: 0.9rem; }
+
+/* ------- Writeup (post-solve) ------- */
+.writeup {
+  margin: 1.5rem 0;
+  background: #f2f9e8;
+  border: 2px solid var(--grass);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+}
+.writeup h2 { margin-top: 0; font-size: 1.2rem; }
+.writeup-body { color: var(--ink); }
+.writeup-body code { background: #e3f0d4; }

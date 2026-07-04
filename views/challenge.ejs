@@ -24,6 +24,26 @@
     </div>
   </header>
 
+  <% if (locked) { %>
+    <div class="locked-panel">
+      <h2>🔒 Locked</h2>
+      <p>Solve the following challenge<%= requires.length === 1 ? '' : 's' %> to unlock this one:</p>
+      <ul class="req-list">
+        <% requires.forEach((r) => { %>
+          <li class="<%= r.solved ? 'req-done' : 'req-todo' %>">
+            <%= r.solved ? '✅' : '🔒' %> <a href="/challenges/<%= r.slug %>"><%= r.title %></a>
+          </li>
+        <% }) %>
+      </ul>
+    </div>
+  <% } else { %>
+
+  <% if (requires && requires.length) { %>
+    <p class="req-note">Prerequisites cleared:
+      <% requires.forEach((r, i) => { %><a href="/challenges/<%= r.slug %>"><%= r.title %></a><%= i < requires.length - 1 ? ', ' : '' %><% }) %>.
+    </p>
+  <% } %>
+
   <div class="ch-body">
     <%- challenge.description %>
   </div>
@@ -53,6 +73,13 @@
     <div class="solved-banner">🥚 You've solved this one. Nice work.</div>
   <% } %>
 
+  <% if (solved && writeup) { %>
+    <section class="writeup">
+      <h2>📝 Writeup</h2>
+      <div class="writeup-body"><%- writeup %></div>
+    </section>
+  <% } %>
+
   <form method="post" action="/challenges/<%= challenge.slug %>/submit" class="flag-form">
     <label>
       Submit flag
@@ -60,6 +87,8 @@
     </label>
     <button type="submit" class="btn-primary">Submit</button>
   </form>
+
+  <% } %>
 </article>
 
 <%- include('partials/footer') %>

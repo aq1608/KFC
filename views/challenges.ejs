@@ -32,29 +32,46 @@
 </div>
 
 <% function card(c) { %>
-  <li class="challenge-card <%= c.solved ? 'solved' : '' %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'solved' : 'unsolved' %>">
-    <a href="/challenges/<%= c.slug %>">
-      <div class="cc-title">
-        <%= c.title %>
-        <span class="diff-badge diff-<%= c.difficulty %>"><%= diffLabel[c.difficulty] || c.difficulty %></span>
+  <% if (c.locked) { %>
+    <li class="challenge-card locked" data-difficulty="<%= c.difficulty %>" data-solved="unsolved">
+      <div class="cc-locked">
+        <div class="cc-title">
+          <%= c.title %>
+          <span class="diff-badge diff-<%= c.difficulty %>"><%= diffLabel[c.difficulty] || c.difficulty %></span>
+          <span class="lock-icon" title="Locked">🔒</span>
+        </div>
+        <div class="cc-req">
+          Requires:
+          <% const unmet = c.requires.filter((r) => !r.solved); %>
+          <% unmet.forEach((r, i) => { %><%= r.title %><%= i < unmet.length - 1 ? ', ' : '' %><% }) %>
+        </div>
       </div>
-      <div class="cc-meta">
-        <span class="pts">
-          <%= c.value %> pts
-          <% if (c.value < c.points) { %><span class="pts-initial" title="Started at <%= c.points %>; decays as more solve it"><%= c.points %></span><% } %>
-        </span>
-        <% if (c.solved) { %><span class="badge-solved">🥚 solved</span><% } %>
-      </div>
-      <div class="cc-stats">
-        <span class="cc-solves" title="Total solves"><%= c.solveCount %> solve<%= c.solveCount === 1 ? '' : 's' %></span>
-        <% if (c.firstBlood) { %>
-          <span class="cc-firstblood" title="First blood">🩸 <a href="/u/<%= encodeURIComponent(c.firstBlood) %>"><%= c.firstBlood %></a></span>
-        <% } else { %>
-          <span class="cc-firstblood cc-unsolved" title="Nobody has solved this yet">🩸 unclaimed</span>
-        <% } %>
-      </div>
-    </a>
-  </li>
+    </li>
+  <% } else { %>
+    <li class="challenge-card <%= c.solved ? 'solved' : '' %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'solved' : 'unsolved' %>">
+      <a href="/challenges/<%= c.slug %>">
+        <div class="cc-title">
+          <%= c.title %>
+          <span class="diff-badge diff-<%= c.difficulty %>"><%= diffLabel[c.difficulty] || c.difficulty %></span>
+        </div>
+        <div class="cc-meta">
+          <span class="pts">
+            <%= c.value %> pts
+            <% if (c.value < c.points) { %><span class="pts-initial" title="Started at <%= c.points %>; decays as more solve it"><%= c.points %></span><% } %>
+          </span>
+          <% if (c.solved) { %><span class="badge-solved">🥚 solved</span><% } %>
+        </div>
+        <div class="cc-stats">
+          <span class="cc-solves" title="Total solves"><%= c.solveCount %> solve<%= c.solveCount === 1 ? '' : 's' %></span>
+          <% if (c.firstBlood) { %>
+            <span class="cc-firstblood" title="First blood">🩸 <a href="/u/<%= encodeURIComponent(c.firstBlood) %>"><%= c.firstBlood %></a></span>
+          <% } else { %>
+            <span class="cc-firstblood cc-unsolved" title="Nobody has solved this yet">🩸 unclaimed</span>
+          <% } %>
+        </div>
+      </a>
+    </li>
+  <% } %>
 <% } %>
 
 <% for (const cat of renderCats) { %>

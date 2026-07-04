@@ -14,6 +14,8 @@ The platform currently ships with **20 challenges** across eight categories, ran
 - Eight challenge categories: **Web**, **Pwn**, **Crypto**, **Reversing**, **Stego**, **Forensics**, **OSINT**, **Misc**
 - **Dynamic scoring** — challenges decay in value as more players solve them (see [Scoring](#scoring))
 - Unlockable **hints** that cost points, deducted from a player's net score
+- **Prerequisite chains** — challenges can be locked until required challenges are solved
+- **Post-solve writeups** — an explanation revealed once a player solves the challenge
 - First-blood tracking and solve counts per challenge
 - Player profiles (`/u/:username`) with rank, score, and solve timeline
 - Live scoreboard ranked by score, then earliest last-solve
@@ -230,8 +232,13 @@ Every challenge is defined as an entry in `challenges.seed.js`. The server upser
   description: `HTML shown on the challenge page. Links, <pre>, <img>, etc. are all fine.`,
   flag: 'CHICKEN{your_flag_here}',
   asset_path: null,              // or '/challenges/<slug>/<file>' for a downloadable asset
+  requires: ['other-slug'],      // optional: locked until these challenges are solved
+  writeup: `Optional HTML explanation, revealed only after the player solves this challenge.`,
+  hints: [{ body: 'Optional hint HTML.', cost: 10 }],  // optional paid hints
 }
 ```
+
+Locked challenges never send their description, hints, or writeup to the client, and the submit/hint routes reject attempts server-side until prerequisites are met. Writeups are only served after a solve.
 
 **Valid categories:** `web`, `pwn`, `crypto`, `rev`, `stego`, `forensics`, `osint`, `misc`.
 The listing order, labels, and icons for these live in `views/challenges.ejs`, and their pill colours are in `public/style.css` (`.cat-<category>`). To introduce a brand-new category, update those two files as well.

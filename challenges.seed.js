@@ -28,6 +28,9 @@ Visit <a href="/c/coop-inspector/board" target="_blank" rel="noopener">the notic
 Julius always insisted his messages were <em>a classic</em>. Decode it and submit the flag.`,
     flag: 'CHICKEN{roosters_rule_the_roost}',
     asset_path: null,
+    writeup: `This scrap was encoded with <strong>ROT13</strong> — a Caesar shift of 13 places.
+Because 13 is exactly half of 26, applying ROT13 a second time reverses it. Drop the text into
+any ROT13 tool, or run <code>tr 'A-Za-z' 'N-ZA-Mn-za-m'</code>, to recover the flag.`,
     hints: [
       { body: 'A "classic" cipher named after Julius = a Caesar shift. This one is the most famous shift of all.', cost: 5 },
       { body: 'It\'s ROT13 — shift every letter by 13. Paste the text into any ROT13 decoder.', cost: 15 },
@@ -61,6 +64,9 @@ well-known way to un-scramble text that ends in one or two <code>=</code> signs.
 <em>Hint: this encoding is named after a power of two. Most terminals can decode it in one line.</em>`,
     flag: 'CHICKEN{b4se_of_the_coop}',
     asset_path: null,
+    writeup: `The trailing <code>=</code> padding is a tell-tale sign of <strong>Base64</strong>.
+Decode it with <code>echo 'Q0hJQ0tFTntiNHNlX29mX3RoZV9jb29wfQ==' | base64 -d</code>. Remember:
+Base64 is an <em>encoding</em>, not encryption — it hides nothing from anyone who recognises it.`,
   },
   {
     slug: 'binary-brood',
@@ -93,6 +99,10 @@ Decode the message, then submit it as the flag with spaces turned into underscor
 <code>CHICKEN{decoded_message_here}</code>`,
     flag: 'CHICKEN{polyalphabetic_poultry}',
     asset_path: null,
+    requires: ['caesar-cluck'],
+    writeup: `A Vigenère cipher shifts each letter by a different amount, cycling through a
+keyword — here, <code>ROOSTER</code>. Feed the ciphertext and key into any Vigenère decoder to get
+"polyalphabetic poultry". Unlike Caesar, the repeating key defeats simple frequency analysis.`,
     hints: [
       { body: 'The keyword really is <code>ROOSTER</code> — feed both the ciphertext and that key into a Vigenère decoder.', cost: 20 },
     ],
@@ -216,6 +226,10 @@ secret with a repeating key, reverses the bytes, then base64-encodes the lot. Th
 Peel the layers in the opposite order to reveal the flag.`,
     flag: 'CHICKEN{layers_upon_layers}',
     asset_path: '/challenges/matryoshka-egg/egg.js',
+    requires: ['cluck-lock'],
+    writeup: `The encoder applied three layers: XOR with the key <code>EGG</code>, byte reversal,
+then Base64. Undo them in reverse order — Base64-decode the BLOB, reverse the bytes, then XOR with
+<code>EGG</code> — to reveal the flag.`,
     hints: [
       { body: 'Reverse the encode steps in the opposite order: base64-decode the BLOB first.', cost: 15 },
       { body: 'Then reverse the decoded bytes, and finally XOR them with the repeating key <code>EGG</code>.', cost: 30 },
@@ -296,6 +310,11 @@ checking where it lands. See if you can climb <em>out</em> of the reading room.
 <em>Hint: <code>../</code> is your friend. The vault sits beside the reading room.</em>`,
     flag: 'CHICKEN{path_traversal_poultry}',
     asset_path: null,
+    writeup: `The reading room joined your <code>file</code> parameter onto a base path without
+validating it, so <code>../vault/master.key</code> climbed out of the intended directory — a classic
+<strong>path traversal</strong> (CWE-22). Defences: resolve the final path and confirm it stays
+within an allow-listed root, reject <code>..</code> segments, or map user input to opaque IDs
+instead of raw filenames.`,
     hints: [
       { body: 'The vault sits one directory above the reading room. Prefix the filename with <code>../</code>.', cost: 20 },
       { body: 'Try <code>/c/egg-vault/read?file=../vault/master.key</code>.', cost: 40 },
@@ -355,6 +374,11 @@ notorious flaw in <em>which algorithms it trusts</em>. Only a token whose payloa
 <em>Hint: what if a token claims it needs no signature at all? Look up the JWT "alg:none" attack.</em>`,
     flag: 'CHICKEN{alg_none_is_never_okay}',
     asset_path: null,
+    writeup: `The verifier trusted the token's own <code>alg</code> header, so a token declaring
+<code>"alg":"none"</code> with an empty signature skipped verification entirely — the classic JWT
+<strong>alg-confusion</strong> bypass. Fix it by pinning the accepted algorithm server-side (an
+allow-list), rejecting <code>none</code>, and verifying the signature with a key of the expected
+type.`,
     hints: [
       { body: 'Decode the three base64url parts. You only need to change the header and payload.', cost: 20 },
       { body: 'Set the header to <code>{"alg":"none","typ":"JWT"}</code> and the payload to include <code>"role":"admin"</code>.', cost: 40 },

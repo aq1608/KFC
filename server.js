@@ -196,6 +196,11 @@ const stmts = {
     'INSERT OR IGNORE INTO hint_unlocks (user_id, hint_id) VALUES (?, ?)'
   ),
 
+  // ----- Prerequisites (unlock gating) -----
+  allPrereqs: db.prepare('SELECT challenge_id, requires_id FROM challenge_prereqs'),
+  prereqsForChallenge: db.prepare('SELECT requires_id FROM challenge_prereqs WHERE challenge_id = ?'),
+  challengeStubById: db.prepare('SELECT id, slug, title FROM challenges WHERE id = ?'),
+
   // ----- Admin -----
   countUsers: db.prepare('SELECT COUNT(*) AS n FROM users'),
   countChallenges: db.prepare('SELECT COUNT(*) AS n FROM challenges'),
@@ -215,6 +220,26 @@ const stmts = {
   deleteHintUnlocksForUser: db.prepare('DELETE FROM hint_unlocks WHERE user_id = ?'),
   deleteUserById: db.prepare('DELETE FROM users WHERE id = ?'),
 };
+
+// Map of { challenge_id -> [required challenge ids] }.
+function prereqMap() {
+  const m = new Map();
+  for (const r of stmts.allPrereqs.all()) {
+    if (!m.has(r.challenge_id)) m.set(r.challenge_id, []);
+    m.get(r.challenge_id).push(r.requires_id);
+  }
+  return m;
+}
+
+// The set of challenge ids a user has solved.
+function solvedIdSet(userId) {
+  return new Set(stmts.solvedIdsForUser.all(userId).map((r) => r.challenge_id));
+}
+
+// A challenge is locked until every prerequisite has been solved.
+function prereqsUnmet(challengeId, solved) {
+  return stmts.prereqsForChallenge.all(challengeId).some((r) => !solved.has(r.requires_id));
+}
 
 // Build lookup maps of { challenge_id -> solve count } and { challenge_id -> first-blood username }.
 function challengeStatMaps() {
@@ -358,9 +383,18 @@ app.get('/challenges', requireAuth, (req, res) => {
     stmts.solvedIdsForUser.all(req.session.user.id).map((r) => r.challenge_id)
   );
   const { counts, firstBloods } = challengeStatMaps();
+  const pmap = prereqMap();
+  const titleById = new Map(all.map((c) => [c.id, c.title]));
+  const slugById = new Map(all.map((c) => [c.id, c.slug]));
   const byCategory = {};
   for (const c of all) {
     const solveCount = counts[c.id] || 0;
+    const requires = (pmap.get(c.id) || []).map((rid) => ({
+      title: titleById.get(rid),
+      slug: slugById.get(rid),
+      solved: solvedIds.has(rid),
+    }));
+    const locked = !solvedIds.has(c.id) && requires.some((r) => !r.solved);
     (byCategory[c.category] ||= []).push({
       ...c,
       solved: solvedIds.has(c.id),
@@ -368,6 +402,8 @@ app.get('/challenges', requireAuth, (req, res) => {
       firstBlood: firstBloods[c.id] || null,
       value: dynamicValue(c.points, solveCount),
       difficulty: difficultyFor(c.points),
+      locked,
+      requires,
     });
   }
   res.render('challenges', { byCategory });
@@ -376,14 +412,41 @@ app.get('/challenges', requireAuth, (req, res) => {
 app.get('/challenges/:slug', requireAuth, (req, res) => {
   const c = stmts.challengeBySlug.get(req.params.slug);
   if (!c) return res.status(404).render('404');
-  const solved = !!stmts.solveExists.get(req.session.user.id, c.id);
+  const uid = req.session.user.id;
+  const solved = !!stmts.solveExists.get(uid, c.id);
   const solveCount = stmts.solveCountForChallenge.get(c.id).n;
   const firstBlood = (stmts.firstBloods.all().find((r) => r.challenge_id === c.id) || {}).fb_user || null;
   const currentValue = dynamicValue(c.points, solveCount);
+  const difficulty = difficultyFor(c.points);
+
+  // Prerequisite gating: build the requirement list and lock state.
+  const solved_ = solvedIdSet(uid);
+  const requires = stmts.prereqsForChallenge.all(c.id).map((r) => {
+    const rc = stmts.challengeStubById.get(r.requires_id);
+    return { slug: rc.slug, title: rc.title, solved: solved_.has(r.requires_id) };
+  });
+  const locked = !solved && requires.some((r) => !r.solved);
+
+  // For locked challenges, do NOT send the description, hints, or writeup —
+  // the puzzle stays hidden until prerequisites are met.
+  if (locked) {
+    return res.status(423).render('challenge', {
+      challenge: { id: c.id, slug: c.slug, title: c.title, category: c.category, points: c.points, description: null },
+      solved: false,
+      solveCount,
+      firstBlood,
+      currentValue,
+      difficulty,
+      hints: [],
+      locked: true,
+      requires,
+      writeup: null,
+    });
+  }
 
   // Only send hint bodies for hints this user has already unlocked; locked
   // hint text never reaches the client.
-  const unlockedIds = new Set(stmts.unlockedHintIdsForUser.all(req.session.user.id).map((r) => r.hint_id));
+  const unlockedIds = new Set(stmts.unlockedHintIdsForUser.all(uid).map((r) => r.hint_id));
   const hints = stmts.hintsForChallenge.all(c.id).map((h) => {
     const unlocked = unlockedIds.has(h.id);
     return { idx: h.idx, cost: h.cost, unlocked, body: unlocked ? h.body : null };
@@ -395,8 +458,12 @@ app.get('/challenges/:slug', requireAuth, (req, res) => {
     solveCount,
     firstBlood,
     currentValue,
-    difficulty: difficultyFor(c.points),
+    difficulty,
     hints,
+    locked: false,
+    requires,
+    // The writeup is only revealed after the user has solved the challenge.
+    writeup: solved ? (c.writeup || null) : null,
   });
 });
 
@@ -404,6 +471,10 @@ app.get('/challenges/:slug', requireAuth, (req, res) => {
 app.post('/challenges/:slug/hint/:idx', requireAuth, (req, res) => {
   const c = stmts.challengeBySlug.get(req.params.slug);
   if (!c) return res.status(404).render('404');
+  if (prereqsUnmet(c.id, solvedIdSet(req.session.user.id))) {
+    flash(req, 'error', "Solve this challenge's prerequisites first.");
+    return res.redirect(`/challenges/${c.slug}`);
+  }
   const idx = parseInt(req.params.idx, 10);
   const hint = Number.isInteger(idx) ? stmts.hintByChallengeAndIdx.get(c.id, idx) : null;
   if (!hint) {
@@ -422,6 +493,12 @@ app.post('/challenges/:slug/hint/:idx', requireAuth, (req, res) => {
 app.post('/challenges/:slug/submit', requireAuth, (req, res) => {
   const c = stmts.challengeBySlug.get(req.params.slug);
   if (!c) return res.status(404).render('404');
+
+  // Server-side prerequisite enforcement (defence in depth beyond the hidden UI).
+  if (prereqsUnmet(c.id, solvedIdSet(req.session.user.id))) {
+    flash(req, 'error', 'You must solve the prerequisites before attempting this challenge.');
+    return res.redirect(`/challenges/${c.slug}`);
+  }
 
   if (!allowFlagSubmission(req.session.user.id)) {
     flash(req, 'error', 'Whoa there — too many flag attempts. Take a breather and try again in a moment.');

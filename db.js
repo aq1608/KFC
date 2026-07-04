@@ -25,7 +25,8 @@ db.exec(`
     points      INTEGER NOT NULL,
     description TEXT NOT NULL,
     flag        TEXT NOT NULL,
-    asset_path  TEXT
+    asset_path  TEXT,
+    writeup     TEXT
   );
 
   CREATE TABLE IF NOT EXISTS solves (
@@ -60,21 +61,43 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_hint_unlocks_user ON hint_unlocks(user_id);
+
+  CREATE TABLE IF NOT EXISTS challenge_prereqs (
+    challenge_id INTEGER NOT NULL,
+    requires_id  INTEGER NOT NULL,
+    PRIMARY KEY (challenge_id, requires_id),
+    FOREIGN KEY (challenge_id) REFERENCES challenges(id) ON DELETE CASCADE,
+    FOREIGN KEY (requires_id)  REFERENCES challenges(id) ON DELETE CASCADE
+  );
 `);
+
+// Lightweight migration for DBs created before a column existed.
+function ensureColumn(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+ensureColumn('challenges', 'writeup', 'TEXT');
 
 function seedChallenges(challenges) {
   const insert = db.prepare(`
-    INSERT INTO challenges (slug, title, category, points, description, flag, asset_path)
-    VALUES (@slug, @title, @category, @points, @description, @flag, @asset_path)
+    INSERT INTO challenges (slug, title, category, points, description, flag, asset_path, writeup)
+    VALUES (@slug, @title, @category, @points, @description, @flag, @asset_path, @writeup)
     ON CONFLICT(slug) DO UPDATE SET
       title       = excluded.title,
       category    = excluded.category,
       points      = excluded.points,
       description = excluded.description,
       flag        = excluded.flag,
-      asset_path  = excluded.asset_path
+      asset_path  = excluded.asset_path,
+      writeup     = excluded.writeup
   `);
   const getId = db.prepare('SELECT id FROM challenges WHERE slug = ?');
+  const clearPrereqs = db.prepare('DELETE FROM challenge_prereqs WHERE challenge_id = ?');
+  const insertPrereq = db.prepare(
+    'INSERT OR IGNORE INTO challenge_prereqs (challenge_id, requires_id) VALUES (?, ?)'
+  );
   // Upsert by (challenge_id, idx) so hint IDs are stable across re-seeds and
   // existing hint_unlocks keep pointing at the right hint.
   const upsertHint = db.prepare(`
@@ -86,9 +109,11 @@ function seedChallenges(challenges) {
   `);
 
   const tx = db.transaction((rows) => {
+    // Pass 1: upsert challenges and their hints.
     for (const r of rows) {
-      // `hints` is not a column — strip it before binding the challenge row.
-      const { hints, ...challengeRow } = r;
+      // `hints` and `requires` are not columns — strip them before binding.
+      const { hints, requires, ...challengeRow } = r;
+      challengeRow.writeup = challengeRow.writeup ?? null;
       insert.run(challengeRow);
       if (Array.isArray(hints) && hints.length) {
         const challengeId = getId.get(r.slug).id;
@@ -100,6 +125,17 @@ function seedChallenges(challenges) {
             cost: Number.isInteger(h.cost) ? h.cost : 0,
           });
         });
+      }
+    }
+    // Pass 2: rebuild prerequisites now that every challenge id exists.
+    for (const r of rows) {
+      const challengeId = getId.get(r.slug).id;
+      clearPrereqs.run(challengeId);
+      if (Array.isArray(r.requires)) {
+        for (const reqSlug of r.requires) {
+          const req = getId.get(reqSlug);
+          if (req && req.id !== challengeId) insertPrereq.run(challengeId, req.id);
+        }
       }
     }
   });
