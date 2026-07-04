@@ -22,6 +22,27 @@
     <%- challenge.description %>
   </div>
 
+  <% if (hints && hints.length) { %>
+    <section class="hints" id="hints">
+      <h2>Hints</h2>
+      <ul class="hint-list">
+        <% hints.forEach((h) => { %>
+          <li class="hint <%= h.unlocked ? 'unlocked' : 'locked' %>">
+            <span class="hint-label">Hint <%= h.idx + 1 %></span>
+            <% if (h.unlocked) { %>
+              <div class="hint-body"><%- h.body %></div>
+            <% } else { %>
+              <form method="post" action="/challenges/<%= challenge.slug %>/hint/<%= h.idx %>" class="hint-form">
+                <button type="submit" class="btn-hint">🔓 Unlock (−<%= h.cost %> pts)</button>
+              </form>
+            <% } %>
+          </li>
+        <% }) %>
+      </ul>
+      <p class="hint-note">Unlocking a hint permanently subtracts its cost from your score.</p>
+    </section>
+  <% } %>
+
   <% if (solved) { %>
     <div class="solved-banner">🥚 You've solved this one. Nice work.</div>
   <% } %>

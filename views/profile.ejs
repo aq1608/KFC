@@ -36,6 +36,12 @@
       <div class="stat-num">🩸 <%= firstBloods %></div>
       <div class="stat-label">First bloods</div>
     </div>
+    <% if (typeof hintsSpent !== 'undefined' && hintsSpent > 0) { %>
+      <div class="stat">
+        <div class="stat-num">🔓 −<%= hintsSpent %></div>
+        <div class="stat-label">Hint cost</div>
+      </div>
+    <% } %>
   </div>
 
   <% if (totalChallenges > 0) { %>
