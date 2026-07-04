@@ -8,6 +8,7 @@ const bcrypt = require('bcrypt');
 const { db, seedChallenges } = require('./db');
 const challengeSeed = require('./challenges.seed');
 const { dynamicValue } = require('./scoring');
+const { difficultyFor } = require('./difficulty');
 
 seedChallenges(challengeSeed);
 
@@ -322,6 +323,7 @@ app.get('/challenges', requireAuth, (req, res) => {
       solveCount,
       firstBlood: firstBloods[c.id] || null,
       value: dynamicValue(c.points, solveCount),
+      difficulty: difficultyFor(c.points),
     });
   }
   res.render('challenges', { byCategory });
@@ -349,6 +351,7 @@ app.get('/challenges/:slug', requireAuth, (req, res) => {
     solveCount,
     firstBlood,
     currentValue,
+    difficulty: difficultyFor(c.points),
     hints,
   });
 });
