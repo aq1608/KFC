@@ -95,6 +95,34 @@ The app then listens on **http://localhost:3000**. Notes:
 - A `HEALTHCHECK` polls `/healthz`, which reports `{ "status": "ok", ... }` once the app and database are ready.
 - Set `SESSION_SECRET` and `TOT_SECRET` via the environment (see `docker-compose.yml`) before exposing the app publicly.
 
+### Deploying to Fly.io
+
+Because KFC keeps its state in a single-file SQLite database, it runs as **one always-on instance with a persistent volume** — which is exactly what the bundled [`fly.toml`](fly.toml) sets up (it builds the `Dockerfile` and mounts a volume at `/app/data`).
+
+```bash
+# 1. Install flyctl (https://fly.io/docs/flyctl/install/) and log in
+fly auth login
+
+# 2. Pick a unique app name: edit `app = "..."` in fly.toml, or:
+fly apps create my-kfc
+
+# 3. Create the persistent volume the config expects (match your region)
+fly volumes create kfc_data --region iad --size 1
+
+# 4. Set your secrets (never bake these into the image)
+fly secrets set SESSION_SECRET="$(openssl rand -hex 32)" \
+                TOT_SECRET="$(openssl rand -hex 32)" \
+                ADMIN_USERS="your-username"
+
+# 5. Deploy and open it
+fly deploy
+fly open
+```
+
+> **Single instance only.** The SQLite database lives on one machine's volume, so do **not** `fly scale count` above 1. To run multiple instances (or use an autoscaling host like Cloud Run), migrate the app to Postgres first.
+
+The same shape works on other volume-capable hosts — e.g. a **Railway** service with a volume mounted at `/app/data`, or a **Render** web service with a Disk at `/app/data` — set `KFC_DATA_DIR=/app/data` and the secrets above.
+
 ### Environment Variables
 
 | Variable               | Description                                                        | Default                           |
