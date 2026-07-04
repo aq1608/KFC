@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Coop's Back Door</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="site-main">
+    <article class="auth-card" style="max-width:34rem;">
+      <h1>🚪 The Coop's Back Door</h1>
+      <p>The doorhen squints at your membership cookie&hellip;</p>
+
+      <p>Your current role is:
+        <code><%= role %></code>
+      </p>
+
+      <% if (role === 'head_rooster') { %>
+        <div class="solved-banner" style="margin-top:1rem;">
+          🐓 <strong>Access granted, Head Rooster!</strong><br>
+          The VIP roost password is:
+          <code>CHICKEN{tamper_the_cookie_jar}</code>
+        </div>
+      <% } else { %>
+        <div class="flash flash-error" style="margin-top:1rem;">
+          🚫 Ordinary hens are not permitted in the VIP roost.
+          Only a <code>head_rooster</code> may enter.
+        </div>
+        <p style="color:var(--ink-soft); font-size:0.95rem;">
+          The doorhen only reads your <code>role</code> cookie &mdash; she never checks
+          it against any list. Perhaps it can be&hellip; adjusted.
+        </p>
+      <% } %>
+
+      <p style="margin-top:1.5rem;"><a href="/challenges/cookie-coop">← Back to the challenge</a></p>
+    </article>
+  </main>
+</body>
+</html>

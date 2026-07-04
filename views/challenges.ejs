@@ -3,9 +3,9 @@
 <h1>Challenges</h1>
 <p class="subhead">Pick your quarry. Solved challenges are marked with a 🥚.</p>
 
-<% const catOrder = ['web', 'crypto', 'osint']; %>
-<% const catLabel = { web: 'Web', crypto: 'Crypto', osint: 'OSINT' }; %>
-<% const catIcon  = { web: '🕸️', crypto: '🔐', osint: '🔎' }; %>
+<% const catOrder = ['web', 'crypto', 'osint', 'forensics']; %>
+<% const catLabel = { web: 'Web', crypto: 'Crypto', osint: 'OSINT', forensics: 'Forensics' }; %>
+<% const catIcon  = { web: '🕸️', crypto: '🔐', osint: '🔎', forensics: '🧪' }; %>
 
 <% for (const cat of catOrder) { %>
   <% if (byCategory[cat]) { %>

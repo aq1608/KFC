@@ -42,6 +42,20 @@ function flash(req, type, message) {
   req.session.flash = { type, message };
 }
 
+// Minimal cookie parser (avoids pulling in an extra dependency).
+function parseCookies(header) {
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    const key = part.slice(0, idx).trim();
+    const val = part.slice(idx + 1).trim();
+    if (key) out[key] = decodeURIComponent(val);
+  }
+  return out;
+}
+
 function requireAuth(req, res, next) {
   if (!req.session.user) {
     flash(req, 'error', 'You need to log in first.');
@@ -189,6 +203,28 @@ app.post('/challenges/:slug/submit', requireAuth, (req, res) => {
 // Individual challenges can have their own page under /c/:slug/... rendered from a view.
 app.get('/c/coop-inspector/board', (req, res) => {
   res.render('challenge-pages/coop-inspector-board');
+});
+
+// Cookie Coop: hand out a plain "role=hen" cookie; only "head_rooster" sees the flag.
+app.get('/c/cookie-coop/door', (req, res) => {
+  const cookies = parseCookies(req.headers.cookie);
+  const role = cookies.role;
+  if (!role) {
+    // First visit: stamp them as an ordinary hen.
+    res.cookie('role', 'hen', { httpOnly: false, sameSite: 'lax' });
+  }
+  res.render('challenge-pages/cookie-coop-door', { role: role || 'hen' });
+});
+
+// Robots Roost: the disallowed nest that /robots.txt points to.
+app.get('/c/robots-roost/secret-nest', (req, res) => {
+  res.render('challenge-pages/robots-roost-nest');
+});
+
+// Headers of the Henhouse: an ordinary-looking page with the flag in a response header.
+app.get('/c/header-hen/desk', (req, res) => {
+  res.set('X-Chicken-Flag', 'CHICKEN{peck_the_response_headers}');
+  res.render('challenge-pages/header-hen-desk');
 });
 
 // ---------- Scoreboard ----------

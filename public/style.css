@@ -214,9 +214,10 @@ pre { padding: 0.75em 1em; overflow-x: auto; }
   background: var(--cream-2);
   color: var(--ink-soft);
 }
-.cat-web    { background: #d9edf7; color: #2c6b8a; }
-.cat-crypto { background: #fbe6d4; color: #8a4b2c; }
-.cat-osint  { background: #eae1f7; color: #573a8a; }
+.cat-web       { background: #d9edf7; color: #2c6b8a; }
+.cat-crypto    { background: #fbe6d4; color: #8a4b2c; }
+.cat-osint     { background: #eae1f7; color: #573a8a; }
+.cat-forensics { background: #d8ecdd; color: #2c7a4b; }
 
 .ch-body { margin: 1.5rem 0; }
 .solved-banner {

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Henhouse Reception</title>
+  <link rel="stylesheet" href="/style.css">
+  <!-- Nothing hidden in the HTML this time. Look at the envelope, not the letter. -->
+</head>
+<body>
+  <main class="site-main">
+    <article class="auth-card" style="max-width:34rem;">
+      <h1>🛎️ Henhouse Reception</h1>
+      <p>
+        The desk is spotless. Not a flag in sight on this page &mdash; and viewing the
+        source won't help you here.
+      </p>
+      <p style="color:var(--ink-soft); font-size:0.95rem;">
+        The receptionist clips a note to the <em>envelope</em> every request arrives in.
+        Check the HTTP <strong>response headers</strong> for this page &mdash; try your
+        browser's Network tab, or run:
+      </p>
+      <pre>curl -I <%= 'http://localhost:3000/c/header-hen/desk' %></pre>
+      <p style="margin-top:1.5rem;"><a href="/challenges/header-hen">← Back to the challenge</a></p>
+    </article>
+  </main>
+</body>
+</html>
