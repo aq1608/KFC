@@ -121,6 +121,21 @@ fly open
 
 > **Single instance only.** The SQLite database lives on one machine's volume, so do **not** `fly scale count` above 1. To run multiple instances (or use an autoscaling host like Cloud Run), migrate the app to Postgres first.
 
+#### Continuous deployment (GitHub Actions)
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) automatically deploys to Fly.io on every push to `main` — but only **after the test suite passes** (the `deploy` job `needs` the `test` job). Overlapping deploys are queued, not cancelled.
+
+One-time setup:
+
+```bash
+# Create a scoped deploy token for the app
+fly tokens create deploy
+```
+
+Then add it to the repo: **Settings → Secrets and variables → Actions → New repository secret**, named `FLY_API_TOKEN`. After that, `git push` to `main` builds, tests, and ships automatically. You can also trigger it manually from the Actions tab (`workflow_dispatch`).
+
+Until that secret is set the workflow still runs the tests, but the deploy step **skips gracefully** (with a warning annotation) instead of failing — so enabling CD is just a matter of adding the token later.
+
 ### Deploying to Render
 
 The bundled [`render.yaml`](render.yaml) is a Blueprint that builds the `Dockerfile`, attaches a 1 GB disk at `/app/data`, and health-checks `/healthz`.
