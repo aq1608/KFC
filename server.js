@@ -68,6 +68,25 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// ---------- Flag-submission rate limiting (anti-brute-force) ----------
+// Simple in-memory sliding window, keyed by user id. Submissions require auth,
+// so per-user is sufficient and avoids penalising users behind shared NAT.
+const FLAG_RATE_MAX = Number(process.env.FLAG_RATE_MAX) || 15;
+const FLAG_RATE_WINDOW_MS = Number(process.env.FLAG_RATE_WINDOW_MS) || 60_000;
+const submitLog = new Map(); // userId -> number[] of recent submit timestamps
+
+function allowFlagSubmission(userId) {
+  const now = Date.now();
+  const recent = (submitLog.get(userId) || []).filter((t) => now - t < FLAG_RATE_WINDOW_MS);
+  if (recent.length >= FLAG_RATE_MAX) {
+    submitLog.set(userId, recent);
+    return false;
+  }
+  recent.push(now);
+  submitLog.set(userId, recent);
+  return true;
+}
+
 // ---------- Prepared statements ----------
 const stmts = {
   userByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
@@ -84,15 +103,14 @@ const stmts = {
   insertSolve: db.prepare('INSERT OR IGNORE INTO solves (user_id, challenge_id) VALUES (?, ?)'),
   solvedIdsForUser: db.prepare('SELECT challenge_id FROM solves WHERE user_id = ?'),
 
+  // Net score = solved challenge points minus unlocked hint costs.
   scoreboard: db.prepare(`
     SELECT u.id, u.username,
-           COALESCE(SUM(c.points), 0) AS score,
-           COUNT(s.challenge_id)      AS solved_count,
-           COALESCE(MAX(s.solved_at), 0) AS last_solve
+           COALESCE((SELECT SUM(c.points) FROM solves s JOIN challenges c ON c.id = s.challenge_id WHERE s.user_id = u.id), 0)
+             - COALESCE((SELECT SUM(h.cost) FROM hint_unlocks hu JOIN hints h ON h.id = hu.hint_id WHERE hu.user_id = u.id), 0) AS score,
+           COALESCE((SELECT COUNT(*)      FROM solves s WHERE s.user_id = u.id), 0) AS solved_count,
+           COALESCE((SELECT MAX(s.solved_at) FROM solves s WHERE s.user_id = u.id), 0) AS last_solve
     FROM users u
-    LEFT JOIN solves s     ON s.user_id = u.id
-    LEFT JOIN challenges c ON c.id = s.challenge_id
-    GROUP BY u.id
     ORDER BY score DESC, last_solve ASC, u.username ASC
     LIMIT 100
   `),
@@ -139,27 +157,46 @@ const stmts = {
     ORDER BY s.solved_at DESC, c.points DESC
   `),
 
-  // A single user's total score.
+  // A single user's net score (solved points minus unlocked hint costs).
   scoreForUser: db.prepare(`
-    SELECT COALESCE(SUM(c.points), 0) AS score
-    FROM solves s
-    JOIN challenges c ON c.id = s.challenge_id
-    WHERE s.user_id = ?
+    SELECT COALESCE((SELECT SUM(c.points) FROM solves s JOIN challenges c ON c.id = s.challenge_id WHERE s.user_id = @uid), 0)
+         - COALESCE((SELECT SUM(h.cost) FROM hint_unlocks hu JOIN hints h ON h.id = hu.hint_id WHERE hu.user_id = @uid), 0) AS score
   `),
 
-  // Rank = 1 + number of users with a strictly higher score.
+  // Total hint points a user has spent.
+  hintsSpentForUser: db.prepare(`
+    SELECT COALESCE(SUM(h.cost), 0) AS spent
+    FROM hint_unlocks hu
+    JOIN hints h ON h.id = hu.hint_id
+    WHERE hu.user_id = ?
+  `),
+
+  // Rank = 1 + number of users with a strictly higher net score.
   rankForUser: db.prepare(`
     WITH scores AS (
-      SELECT u.id AS uid, COALESCE(SUM(c.points), 0) AS score
+      SELECT u.id AS uid,
+             COALESCE((SELECT SUM(c.points) FROM solves s JOIN challenges c ON c.id = s.challenge_id WHERE s.user_id = u.id), 0)
+               - COALESCE((SELECT SUM(h.cost) FROM hint_unlocks hu JOIN hints h ON h.id = hu.hint_id WHERE hu.user_id = u.id), 0) AS score
       FROM users u
-      LEFT JOIN solves s     ON s.user_id = u.id
-      LEFT JOIN challenges c ON c.id = s.challenge_id
-      GROUP BY u.id
     )
     SELECT (SELECT COUNT(*) FROM scores b WHERE b.score > a.score) + 1 AS rank
     FROM scores a
     WHERE a.uid = ?
   `),
+
+  // ----- Hints -----
+  hintsForChallenge: db.prepare(
+    'SELECT id, idx, body, cost FROM hints WHERE challenge_id = ? ORDER BY idx'
+  ),
+  hintByChallengeAndIdx: db.prepare(
+    'SELECT * FROM hints WHERE challenge_id = ? AND idx = ?'
+  ),
+  unlockedHintIdsForUser: db.prepare(
+    'SELECT hint_id FROM hint_unlocks WHERE user_id = ?'
+  ),
+  unlockHint: db.prepare(
+    'INSERT OR IGNORE INTO hint_unlocks (user_id, hint_id) VALUES (?, ?)'
+  ),
 
   firstBloodCountForUser: db.prepare(`
     SELECT COUNT(*) AS n FROM (
@@ -267,17 +304,51 @@ app.get('/challenges/:slug', requireAuth, (req, res) => {
   const solved = !!stmts.solveExists.get(req.session.user.id, c.id);
   const solveCount = (stmts.solveCounts.all().find((r) => r.challenge_id === c.id) || {}).n || 0;
   const firstBlood = (stmts.firstBloods.all().find((r) => r.challenge_id === c.id) || {}).fb_user || null;
+
+  // Only send hint bodies for hints this user has already unlocked; locked
+  // hint text never reaches the client.
+  const unlockedIds = new Set(stmts.unlockedHintIdsForUser.all(req.session.user.id).map((r) => r.hint_id));
+  const hints = stmts.hintsForChallenge.all(c.id).map((h) => {
+    const unlocked = unlockedIds.has(h.id);
+    return { idx: h.idx, cost: h.cost, unlocked, body: unlocked ? h.body : null };
+  });
+
   res.render('challenge', {
     challenge: { id: c.id, slug: c.slug, title: c.title, category: c.category, points: c.points, description: c.description },
     solved,
     solveCount,
     firstBlood,
+    hints,
   });
+});
+
+// Unlock a hint (costs points, which are subtracted from the user's score).
+app.post('/challenges/:slug/hint/:idx', requireAuth, (req, res) => {
+  const c = stmts.challengeBySlug.get(req.params.slug);
+  if (!c) return res.status(404).render('404');
+  const idx = parseInt(req.params.idx, 10);
+  const hint = Number.isInteger(idx) ? stmts.hintByChallengeAndIdx.get(c.id, idx) : null;
+  if (!hint) {
+    flash(req, 'error', 'That hint does not exist.');
+    return res.redirect(`/challenges/${c.slug}`);
+  }
+  const info = stmts.unlockHint.run(req.session.user.id, hint.id);
+  if (info.changes > 0) {
+    flash(req, 'success', `Hint unlocked — ${hint.cost} point${hint.cost === 1 ? '' : 's'} deducted.`);
+  } else {
+    flash(req, 'success', 'You had already unlocked that hint.');
+  }
+  res.redirect(`/challenges/${c.slug}#hints`);
 });
 
 app.post('/challenges/:slug/submit', requireAuth, (req, res) => {
   const c = stmts.challengeBySlug.get(req.params.slug);
   if (!c) return res.status(404).render('404');
+
+  if (!allowFlagSubmission(req.session.user.id)) {
+    flash(req, 'error', 'Whoa there — too many flag attempts. Take a breather and try again in a moment.');
+    return res.redirect(`/challenges/${c.slug}`);
+  }
 
   const submitted = String(req.body.flag || '').trim();
   const correct = submitted === c.flag;
@@ -479,9 +550,10 @@ app.get('/u/:username', (req, res) => {
   if (!user) return res.status(404).render('404');
 
   const solves = stmts.solvesForUser.all(user.id);
-  const score = stmts.scoreForUser.get(user.id).score;
+  const score = stmts.scoreForUser.get({ uid: user.id }).score;
   const rank = stmts.rankForUser.get(user.id).rank;
   const firstBloods = stmts.firstBloodCountForUser.get(user.id).n;
+  const hintsSpent = stmts.hintsSpentForUser.get(user.id).spent;
   const totalChallenges = db.prepare('SELECT COUNT(*) AS n FROM challenges').get().n;
 
   res.render('profile', {
@@ -490,6 +562,7 @@ app.get('/u/:username', (req, res) => {
     score,
     rank,
     firstBloods,
+    hintsSpent,
     totalChallenges,
   });
 });

@@ -28,6 +28,10 @@ Visit <a href="/c/coop-inspector/board" target="_blank" rel="noopener">the notic
 Julius always insisted his messages were <em>a classic</em>. Decode it and submit the flag.`,
     flag: 'CHICKEN{roosters_rule_the_roost}',
     asset_path: null,
+    hints: [
+      { body: 'A "classic" cipher named after Julius = a Caesar shift. This one is the most famous shift of all.', cost: 5 },
+      { body: 'It\'s ROT13 — shift every letter by 13. Paste the text into any ROT13 decoder.', cost: 15 },
+    ],
   },
   {
     slug: 'find-the-hen',
@@ -89,6 +93,9 @@ Decode the message, then submit it as the flag with spaces turned into underscor
 <code>CHICKEN{decoded_message_here}</code>`,
     flag: 'CHICKEN{polyalphabetic_poultry}',
     asset_path: null,
+    hints: [
+      { body: 'The keyword really is <code>ROOSTER</code> — feed both the ciphertext and that key into a Vigenère decoder.', cost: 20 },
+    ],
   },
 
   // ---------------- Web ----------------
@@ -189,6 +196,10 @@ correct passcode <strong>is</strong> the flag.
 <em>Hint: if <code>(char ^ MASK) === TABLE[i]</code>, then <code>char = TABLE[i] ^ MASK</code>.</em>`,
     flag: 'CHICKEN{r3verse_the_cluck}',
     asset_path: '/challenges/cluck-lock/lock.js',
+    hints: [
+      { body: 'XOR is its own inverse. For each number in <code>TABLE</code>, compute <code>value ^ 42</code>.', cost: 15 },
+      { body: 'In JS: <code>TABLE.map(n => String.fromCharCode(n ^ 42)).join("")</code> spells the flag.', cost: 30 },
+    ],
   },
   {
     slug: 'matryoshka-egg',
@@ -205,6 +216,10 @@ secret with a repeating key, reverses the bytes, then base64-encodes the lot. Th
 Peel the layers in the opposite order to reveal the flag.`,
     flag: 'CHICKEN{layers_upon_layers}',
     asset_path: '/challenges/matryoshka-egg/egg.js',
+    hints: [
+      { body: 'Reverse the encode steps in the opposite order: base64-decode the BLOB first.', cost: 15 },
+      { body: 'Then reverse the decoded bytes, and finally XOR them with the repeating key <code>EGG</code>.', cost: 30 },
+    ],
   },
 
   // ---------------- Steganography ----------------
@@ -239,6 +254,10 @@ that come <strong>after</strong> the image ends.
 <em>Hint: <code>strings</code>, <code>binwalk</code>, or a hex editor will reveal the tail.</em>`,
     flag: 'CHICKEN{feathers_hide_the_flag}',
     asset_path: '/challenges/tail-feathers/rooster.png',
+    hints: [
+      { body: 'A PNG ends at its <code>IEND</code> chunk. Anything after that is smuggled data.', cost: 10 },
+      { body: 'Run <code>strings rooster.png | tail</code> (or open it in a hex editor) to read the trailer.', cost: 20 },
+    ],
   },
 
   // ---------------- Misc ----------------
@@ -277,6 +296,10 @@ checking where it lands. See if you can climb <em>out</em> of the reading room.
 <em>Hint: <code>../</code> is your friend. The vault sits beside the reading room.</em>`,
     flag: 'CHICKEN{path_traversal_poultry}',
     asset_path: null,
+    hints: [
+      { body: 'The vault sits one directory above the reading room. Prefix the filename with <code>../</code>.', cost: 20 },
+      { body: 'Try <code>/c/egg-vault/read?file=../vault/master.key</code>.', cost: 40 },
+    ],
   },
 
   // ---------------- Pwn / Logic ----------------
@@ -332,5 +355,10 @@ notorious flaw in <em>which algorithms it trusts</em>. Only a token whose payloa
 <em>Hint: what if a token claims it needs no signature at all? Look up the JWT "alg:none" attack.</em>`,
     flag: 'CHICKEN{alg_none_is_never_okay}',
     asset_path: null,
+    hints: [
+      { body: 'Decode the three base64url parts. You only need to change the header and payload.', cost: 20 },
+      { body: 'Set the header to <code>{"alg":"none","typ":"JWT"}</code> and the payload to include <code>"role":"admin"</code>.', cost: 40 },
+      { body: 'The token is <code>base64url(header) + "." + base64url(payload) + "."</code> — note the trailing dot and empty signature.', cost: 60 },
+    ],
   },
 ];
