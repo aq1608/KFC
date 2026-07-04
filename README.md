@@ -121,7 +121,24 @@ fly open
 
 > **Single instance only.** The SQLite database lives on one machine's volume, so do **not** `fly scale count` above 1. To run multiple instances (or use an autoscaling host like Cloud Run), migrate the app to Postgres first.
 
-The same shape works on other volume-capable hosts — e.g. a **Railway** service with a volume mounted at `/app/data`, or a **Render** web service with a Disk at `/app/data` — set `KFC_DATA_DIR=/app/data` and the secrets above.
+### Deploying to Render
+
+The bundled [`render.yaml`](render.yaml) is a Blueprint that builds the `Dockerfile`, attaches a 1 GB disk at `/app/data`, and health-checks `/healthz`.
+
+1. Push the repo to GitHub, then in Render choose **New → Blueprint** and point it at your fork.
+2. Render reads `render.yaml`, provisions the service + disk, and auto-generates `SESSION_SECRET` / `TOT_SECRET`.
+3. Set `ADMIN_USERS` in the dashboard (it's marked `sync: false`).
+
+> Persistent disks require a paid instance type — the blueprint uses the `starter` plan, since Render's free plan has an ephemeral filesystem.
+
+### Deploying to Railway
+
+The bundled [`railway.json`](railway.json) tells Railway to build from the `Dockerfile` and health-check `/healthz`.
+
+1. Create a project from your repo (`railway init` / the dashboard).
+2. Add a **Volume** mounted at `/app/data` (Railway volumes are configured in the dashboard/CLI).
+3. Set variables: `KFC_DATA_DIR=/app/data`, plus `SESSION_SECRET`, `TOT_SECRET`, and `ADMIN_USERS`.
+4. Deploy. Keep it at a single replica (`numReplicas: 1`) — SQLite is single-instance.
 
 ### Environment Variables
 

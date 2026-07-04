@@ -1,0 +1,29 @@
+# Render Blueprint for KFC (https://render.com/docs/blueprint-spec).
+#
+# NOTE: KFC uses a single-file SQLite database, so it needs a persistent disk
+# and must run as ONE instance. Render disks require a paid instance type
+# (the free plan has an ephemeral filesystem), so this uses the "starter" plan.
+
+services:
+  - type: web
+    name: kfc
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter            # disks are unavailable on the free plan
+    healthCheckPath: /healthz
+    numInstances: 1          # SQLite = single instance only
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: KFC_DATA_DIR
+        value: /app/data
+      - key: SESSION_SECRET
+        generateValue: true  # Render generates a strong random value
+      - key: TOT_SECRET
+        generateValue: true
+      - key: ADMIN_USERS
+        sync: false          # set your admin usernames in the dashboard
+    disk:
+      name: kfc-data
+      mountPath: /app/data   # SQLite + session databases live here
+      sizeGB: 1
