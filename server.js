@@ -2,15 +2,12 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const session = require('express-session');
-const SQLiteStore = require('connect-sqlite3')(session);
 const bcrypt = require('bcrypt');
 
-const { db, seedChallenges } = require('./db');
+const store = require('./store');
 const challengeSeed = require('./challenges.seed');
 const { dynamicValue } = require('./scoring');
 const { difficultyFor } = require('./difficulty');
-
-seedChallenges(challengeSeed);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -25,7 +22,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public'), { redirect: false }));
 
 app.use(session({
-  store: new SQLiteStore({ db: 'sessions.db', dir: process.env.KFC_DATA_DIR || path.join(__dirname, 'data') }),
+  store: store.makeSessionStore(session),
   secret: process.env.SESSION_SECRET || 'cluck-cluck-change-me-in-prod',
   resave: false,
   saveUninitialized: false,
@@ -60,6 +57,9 @@ app.use((req, res, next) => {
 function flash(req, type, message) {
   req.session.flash = { type, message };
 }
+
+// Wrap an async route so rejected promises reach the Express error handler.
+const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // Minimal cookie parser (avoids pulling in an extra dependency).
 function parseCookies(header) {
@@ -114,150 +114,44 @@ function allowFlagSubmission(userId) {
   return true;
 }
 
-// ---------- Prepared statements ----------
-const stmts = {
-  userByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
-  userById: db.prepare('SELECT id, username FROM users WHERE id = ?'),
-  createUser: db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)'),
+// ---------- Shared data helpers (backend-agnostic) ----------
 
-  allChallenges: db.prepare(`
-    SELECT id, slug, title, category, points
-    FROM challenges
-    ORDER BY category, points, id
-  `),
-  challengeBySlug: db.prepare('SELECT * FROM challenges WHERE slug = ?'),
-  solveExists: db.prepare('SELECT 1 FROM solves WHERE user_id = ? AND challenge_id = ?'),
-  insertSolve: db.prepare('INSERT OR IGNORE INTO solves (user_id, challenge_id) VALUES (?, ?)'),
-  solvedIdsForUser: db.prepare('SELECT challenge_id FROM solves WHERE user_id = ?'),
-
-  // ----- Raw data for JS-computed standings (dynamic scoring) -----
-  allUsers: db.prepare('SELECT id, username FROM users'),
-  allSolves: db.prepare('SELECT user_id, challenge_id, solved_at FROM solves'),
-  challengePoints: db.prepare('SELECT id, points FROM challenges'),
-  hintSpendByUser: db.prepare(`
-    SELECT hu.user_id AS uid, COALESCE(SUM(h.cost), 0) AS spent
-    FROM hint_unlocks hu
-    JOIN hints h ON h.id = hu.hint_id
-    GROUP BY hu.user_id
-  `),
-
-  // Solve count per challenge.
-  solveCounts: db.prepare(`
-    SELECT challenge_id, COUNT(*) AS n
-    FROM solves
-    GROUP BY challenge_id
-  `),
-  solveCountForChallenge: db.prepare('SELECT COUNT(*) AS n FROM solves WHERE challenge_id = ?'),
-
-  // First blood per challenge. SQLite's MIN() aggregate returns the row that
-  // owns the minimum, so u.username is the earliest solver for each challenge.
-  firstBloods: db.prepare(`
-    SELECT s.challenge_id,
-           u.username AS fb_user,
-           MIN(s.solved_at) AS fb_at
-    FROM solves s
-    JOIN users u ON u.id = s.user_id
-    GROUP BY s.challenge_id
-  `),
-
-  // Public profile lookup (no password hash).
-  publicUserByUsername: db.prepare(
-    'SELECT id, username, created_at FROM users WHERE username = ?'
-  ),
-
-  // A user's solves, newest first, with challenge details (incl. id for value lookup).
-  solvesForUser: db.prepare(`
-    SELECT c.id AS challenge_id, c.slug, c.title, c.category, c.points, s.solved_at
-    FROM solves s
-    JOIN challenges c ON c.id = s.challenge_id
-    WHERE s.user_id = ?
-    ORDER BY s.solved_at DESC, c.points DESC
-  `),
-
-  // Total hint points a user has spent.
-  hintsSpentForUser: db.prepare(`
-    SELECT COALESCE(SUM(h.cost), 0) AS spent
-    FROM hint_unlocks hu
-    JOIN hints h ON h.id = hu.hint_id
-    WHERE hu.user_id = ?
-  `),
-
-  // ----- Hints -----
-  hintsForChallenge: db.prepare(
-    'SELECT id, idx, body, cost FROM hints WHERE challenge_id = ? ORDER BY idx'
-  ),
-  hintByChallengeAndIdx: db.prepare(
-    'SELECT * FROM hints WHERE challenge_id = ? AND idx = ?'
-  ),
-  unlockedHintIdsForUser: db.prepare(
-    'SELECT hint_id FROM hint_unlocks WHERE user_id = ?'
-  ),
-  unlockHint: db.prepare(
-    'INSERT OR IGNORE INTO hint_unlocks (user_id, hint_id) VALUES (?, ?)'
-  ),
-
-  // ----- Prerequisites (unlock gating) -----
-  allPrereqs: db.prepare('SELECT challenge_id, requires_id FROM challenge_prereqs'),
-  prereqsForChallenge: db.prepare('SELECT requires_id FROM challenge_prereqs WHERE challenge_id = ?'),
-  challengeStubById: db.prepare('SELECT id, slug, title FROM challenges WHERE id = ?'),
-
-  // ----- Admin -----
-  countUsers: db.prepare('SELECT COUNT(*) AS n FROM users'),
-  countChallenges: db.prepare('SELECT COUNT(*) AS n FROM challenges'),
-  countSolves: db.prepare('SELECT COUNT(*) AS n FROM solves'),
-  countHintUnlocks: db.prepare('SELECT COUNT(*) AS n FROM hint_unlocks'),
-  usersWithMeta: db.prepare('SELECT id, username, created_at FROM users'),
-  userById: db.prepare('SELECT id, username FROM users WHERE id = ?'),
-  recentSolves: db.prepare(`
-    SELECT u.username, c.title, c.slug, s.solved_at
-    FROM solves s
-    JOIN users u      ON u.id = s.user_id
-    JOIN challenges c ON c.id = s.challenge_id
-    ORDER BY s.solved_at DESC, u.username ASC
-    LIMIT 25
-  `),
-  deleteSolvesForUser: db.prepare('DELETE FROM solves WHERE user_id = ?'),
-  deleteHintUnlocksForUser: db.prepare('DELETE FROM hint_unlocks WHERE user_id = ?'),
-  deleteUserById: db.prepare('DELETE FROM users WHERE id = ?'),
-};
+// The set of challenge ids a user has solved.
+async function solvedIdSet(userId) {
+  return new Set((await store.solvedIdsForUser(userId)).map((r) => r.challenge_id));
+}
 
 // Map of { challenge_id -> [required challenge ids] }.
-function prereqMap() {
+async function prereqMap() {
   const m = new Map();
-  for (const r of stmts.allPrereqs.all()) {
+  for (const r of await store.allPrereqs()) {
     if (!m.has(r.challenge_id)) m.set(r.challenge_id, []);
     m.get(r.challenge_id).push(r.requires_id);
   }
   return m;
 }
 
-// The set of challenge ids a user has solved.
-function solvedIdSet(userId) {
-  return new Set(stmts.solvedIdsForUser.all(userId).map((r) => r.challenge_id));
-}
-
 // A challenge is locked until every prerequisite has been solved.
-function prereqsUnmet(challengeId, solved) {
-  return stmts.prereqsForChallenge.all(challengeId).some((r) => !solved.has(r.requires_id));
-}
-
-// Build lookup maps of { challenge_id -> solve count } and { challenge_id -> first-blood username }.
-function challengeStatMaps() {
-  const counts = {};
-  for (const r of stmts.solveCounts.all()) counts[r.challenge_id] = r.n;
-  const firstBloods = {};
-  for (const r of stmts.firstBloods.all()) firstBloods[r.challenge_id] = r.fb_user;
-  return { counts, firstBloods };
+async function prereqsUnmet(challengeId, solved) {
+  const reqs = await store.prereqsForChallenge(challengeId);
+  return reqs.some((r) => !solved.has(r.requires_id));
 }
 
 // Compute the full standings using dynamic scoring. Each solved challenge is
 // worth its *current* value (which decays with total solves), minus the points
-// a player has spent unlocking hints. Returns sorted rows (with rank) plus the
-// per-challenge current value map for reuse by callers.
-function computeStandings() {
-  const users = stmts.allUsers.all();
-  const solves = stmts.allSolves.all();
-  const pointsById = new Map(stmts.challengePoints.all().map((c) => [c.id, c.points]));
+// a player has spent unlocking hints. First blood is derived in JS so the logic
+// is identical across SQLite and Postgres. Returns sorted, ranked rows plus
+// per-challenge maps for reuse by callers.
+async function computeStandings() {
+  const [users, solves, points, hintSpendRows] = await Promise.all([
+    store.usersBasic(),
+    store.allSolves(),
+    store.challengePoints(),
+    store.hintSpendByUser(),
+  ]);
+
+  const pointsById = new Map(points.map((c) => [c.id, c.points]));
+  const nameById = new Map(users.map((u) => [u.id, u.username]));
 
   const solveCount = new Map();
   for (const s of solves) solveCount.set(s.challenge_id, (solveCount.get(s.challenge_id) || 0) + 1);
@@ -265,7 +159,7 @@ function computeStandings() {
   const valueById = new Map();
   for (const [cid, pts] of pointsById) valueById.set(cid, dynamicValue(pts, solveCount.get(cid) || 0));
 
-  // First blood (earliest solver) per challenge.
+  // Earliest solver per challenge.
   const firstBy = new Map();
   for (const s of solves) {
     const cur = firstBy.get(s.challenge_id);
@@ -273,11 +167,15 @@ function computeStandings() {
       firstBy.set(s.challenge_id, { user_id: s.user_id, at: s.solved_at });
     }
   }
+  const firstBloodByChallenge = new Map();
   const fbCount = new Map();
-  for (const { user_id } of firstBy.values()) fbCount.set(user_id, (fbCount.get(user_id) || 0) + 1);
+  for (const [cid, fb] of firstBy) {
+    firstBloodByChallenge.set(cid, nameById.get(fb.user_id) || null);
+    fbCount.set(fb.user_id, (fbCount.get(fb.user_id) || 0) + 1);
+  }
 
   const hintSpend = new Map();
-  for (const r of stmts.hintSpendByUser.all()) hintSpend.set(r.uid, r.spent);
+  for (const r of hintSpendRows) hintSpend.set(r.uid, r.spent);
 
   const solvesByUser = new Map();
   for (const s of solves) {
@@ -311,15 +209,17 @@ function computeStandings() {
   );
   rows.forEach((r, i) => { r.rank = i + 1; });
 
-  return { rows, valueById, solveCount };
+  return { rows, valueById, solveCount, firstBloodByChallenge };
 }
 
 // ---------- Public pages ----------
-app.get('/', (req, res) => {
-  const totalChallenges = db.prepare('SELECT COUNT(*) AS n FROM challenges').get().n;
-  const totalPlayers = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+app.get('/', ah(async (req, res) => {
+  const [totalChallenges, totalPlayers] = await Promise.all([
+    store.countChallenges(),
+    store.countUsers(),
+  ]);
   res.render('index', { totalChallenges, totalPlayers });
-});
+}));
 
 // ---------- Auth ----------
 app.get('/register', (req, res) => {
@@ -327,7 +227,7 @@ app.get('/register', (req, res) => {
   res.render('register', { username: '' });
 });
 
-app.post('/register', async (req, res) => {
+app.post('/register', ah(async (req, res) => {
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
 
@@ -340,28 +240,28 @@ app.post('/register', async (req, res) => {
     return res.status(400).render('register', { username });
   }
 
-  const existing = stmts.userByUsername.get(username);
+  const existing = await store.getUserByUsername(username);
   if (existing) {
     flash(req, 'error', 'That username is already roosting here.');
     return res.status(409).render('register', { username });
   }
 
   const hash = await bcrypt.hash(password, 12);
-  const result = stmts.createUser.run(username, hash);
-  req.session.user = { id: result.lastInsertRowid, username };
+  const { id } = await store.createUser(username, hash);
+  req.session.user = { id, username };
   flash(req, 'success', `Welcome to the coop, ${username}!`);
   res.redirect('/challenges');
-});
+}));
 
 app.get('/login', (req, res) => {
   if (req.session.user) return res.redirect('/challenges');
   res.render('login', { username: '' });
 });
 
-app.post('/login', async (req, res) => {
+app.post('/login', ah(async (req, res) => {
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
-  const user = stmts.userByUsername.get(username);
+  const user = await store.getUserByUsername(username);
   const ok = user && await bcrypt.compare(password, user.password_hash);
   if (!ok) {
     flash(req, 'error', 'Wrong username or password.');
@@ -370,25 +270,23 @@ app.post('/login', async (req, res) => {
   req.session.user = { id: user.id, username: user.username };
   flash(req, 'success', `Welcome back, ${user.username}.`);
   res.redirect('/challenges');
-});
+}));
 
 app.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/'));
 });
 
 // ---------- Challenges ----------
-app.get('/challenges', requireAuth, (req, res) => {
-  const all = stmts.allChallenges.all();
-  const solvedIds = new Set(
-    stmts.solvedIdsForUser.all(req.session.user.id).map((r) => r.challenge_id)
-  );
-  const { counts, firstBloods } = challengeStatMaps();
-  const pmap = prereqMap();
+app.get('/challenges', requireAuth, ah(async (req, res) => {
+  const all = await store.allChallenges();
+  const solvedIds = await solvedIdSet(req.session.user.id);
+  const { valueById, solveCount, firstBloodByChallenge } = await computeStandings();
+  const pmap = await prereqMap();
   const titleById = new Map(all.map((c) => [c.id, c.title]));
   const slugById = new Map(all.map((c) => [c.id, c.slug]));
   const byCategory = {};
   for (const c of all) {
-    const solveCount = counts[c.id] || 0;
+    const sc = solveCount.get(c.id) || 0;
     const requires = (pmap.get(c.id) || []).map((rid) => ({
       title: titleById.get(rid),
       slug: slugById.get(rid),
@@ -398,33 +296,36 @@ app.get('/challenges', requireAuth, (req, res) => {
     (byCategory[c.category] ||= []).push({
       ...c,
       solved: solvedIds.has(c.id),
-      solveCount,
-      firstBlood: firstBloods[c.id] || null,
-      value: dynamicValue(c.points, solveCount),
+      solveCount: sc,
+      firstBlood: firstBloodByChallenge.get(c.id) || null,
+      value: valueById.get(c.id) ?? dynamicValue(c.points, sc),
       difficulty: difficultyFor(c.points),
       locked,
       requires,
     });
   }
   res.render('challenges', { byCategory });
-});
+}));
 
-app.get('/challenges/:slug', requireAuth, (req, res) => {
-  const c = stmts.challengeBySlug.get(req.params.slug);
+app.get('/challenges/:slug', requireAuth, ah(async (req, res) => {
+  const c = await store.challengeBySlug(req.params.slug);
   if (!c) return res.status(404).render('404');
   const uid = req.session.user.id;
-  const solved = !!stmts.solveExists.get(uid, c.id);
-  const solveCount = stmts.solveCountForChallenge.get(c.id).n;
-  const firstBlood = (stmts.firstBloods.all().find((r) => r.challenge_id === c.id) || {}).fb_user || null;
-  const currentValue = dynamicValue(c.points, solveCount);
+  const solved = await store.solveExists(uid, c.id);
+  const { valueById, solveCount: scMap, firstBloodByChallenge } = await computeStandings();
+  const solveCount = scMap.get(c.id) || 0;
+  const currentValue = valueById.get(c.id) ?? dynamicValue(c.points, solveCount);
+  const firstBlood = firstBloodByChallenge.get(c.id) || null;
   const difficulty = difficultyFor(c.points);
 
   // Prerequisite gating: build the requirement list and lock state.
-  const solved_ = solvedIdSet(uid);
-  const requires = stmts.prereqsForChallenge.all(c.id).map((r) => {
-    const rc = stmts.challengeStubById.get(r.requires_id);
-    return { slug: rc.slug, title: rc.title, solved: solved_.has(r.requires_id) };
-  });
+  const solved_ = await solvedIdSet(uid);
+  const prereqRows = await store.prereqsForChallenge(c.id);
+  const requires = [];
+  for (const r of prereqRows) {
+    const rc = await store.challengeStubById(r.requires_id);
+    requires.push({ slug: rc.slug, title: rc.title, solved: solved_.has(r.requires_id) });
+  }
   const locked = !solved && requires.some((r) => !r.solved);
 
   // For locked challenges, do NOT send the description, hints, or writeup —
@@ -446,8 +347,8 @@ app.get('/challenges/:slug', requireAuth, (req, res) => {
 
   // Only send hint bodies for hints this user has already unlocked; locked
   // hint text never reaches the client.
-  const unlockedIds = new Set(stmts.unlockedHintIdsForUser.all(uid).map((r) => r.hint_id));
-  const hints = stmts.hintsForChallenge.all(c.id).map((h) => {
+  const unlockedIds = new Set((await store.unlockedHintIdsForUser(uid)).map((r) => r.hint_id));
+  const hints = (await store.hintsForChallenge(c.id)).map((h) => {
     const unlocked = unlockedIds.has(h.id);
     return { idx: h.idx, cost: h.cost, unlocked, body: unlocked ? h.body : null };
   });
@@ -465,37 +366,37 @@ app.get('/challenges/:slug', requireAuth, (req, res) => {
     // The writeup is only revealed after the user has solved the challenge.
     writeup: solved ? (c.writeup || null) : null,
   });
-});
+}));
 
 // Unlock a hint (costs points, which are subtracted from the user's score).
-app.post('/challenges/:slug/hint/:idx', requireAuth, (req, res) => {
-  const c = stmts.challengeBySlug.get(req.params.slug);
+app.post('/challenges/:slug/hint/:idx', requireAuth, ah(async (req, res) => {
+  const c = await store.challengeBySlug(req.params.slug);
   if (!c) return res.status(404).render('404');
-  if (prereqsUnmet(c.id, solvedIdSet(req.session.user.id))) {
+  if (await prereqsUnmet(c.id, await solvedIdSet(req.session.user.id))) {
     flash(req, 'error', "Solve this challenge's prerequisites first.");
     return res.redirect(`/challenges/${c.slug}`);
   }
   const idx = parseInt(req.params.idx, 10);
-  const hint = Number.isInteger(idx) ? stmts.hintByChallengeAndIdx.get(c.id, idx) : null;
+  const hint = Number.isInteger(idx) ? await store.hintByChallengeAndIdx(c.id, idx) : null;
   if (!hint) {
     flash(req, 'error', 'That hint does not exist.');
     return res.redirect(`/challenges/${c.slug}`);
   }
-  const info = stmts.unlockHint.run(req.session.user.id, hint.id);
-  if (info.changes > 0) {
+  const { inserted } = await store.unlockHint(req.session.user.id, hint.id);
+  if (inserted) {
     flash(req, 'success', `Hint unlocked — ${hint.cost} point${hint.cost === 1 ? '' : 's'} deducted.`);
   } else {
     flash(req, 'success', 'You had already unlocked that hint.');
   }
   res.redirect(`/challenges/${c.slug}#hints`);
-});
+}));
 
-app.post('/challenges/:slug/submit', requireAuth, (req, res) => {
-  const c = stmts.challengeBySlug.get(req.params.slug);
+app.post('/challenges/:slug/submit', requireAuth, ah(async (req, res) => {
+  const c = await store.challengeBySlug(req.params.slug);
   if (!c) return res.status(404).render('404');
 
   // Server-side prerequisite enforcement (defence in depth beyond the hidden UI).
-  if (prereqsUnmet(c.id, solvedIdSet(req.session.user.id))) {
+  if (await prereqsUnmet(c.id, await solvedIdSet(req.session.user.id))) {
     flash(req, 'error', 'You must solve the prerequisites before attempting this challenge.');
     return res.redirect(`/challenges/${c.slug}`);
   }
@@ -509,9 +410,9 @@ app.post('/challenges/:slug/submit', requireAuth, (req, res) => {
   const correct = submitted === c.flag;
 
   if (correct) {
-    const info = stmts.insertSolve.run(req.session.user.id, c.id);
-    if (info.changes > 0) {
-      const earned = dynamicValue(c.points, stmts.solveCountForChallenge.get(c.id).n);
+    const { inserted } = await store.insertSolve(req.session.user.id, c.id);
+    if (inserted) {
+      const earned = dynamicValue(c.points, await store.solveCountForChallenge(c.id));
       flash(req, 'success', `Correct! +${earned} points. 🐔`);
     } else {
       flash(req, 'success', 'Correct — but you already had this one.');
@@ -520,10 +421,10 @@ app.post('/challenges/:slug/submit', requireAuth, (req, res) => {
     flash(req, 'error', 'That is not the flag. Keep looking.');
   }
   res.redirect(`/challenges/${c.slug}`);
-});
+}));
 
 // ---------- Static challenge sub-pages (served from views/challenge-pages) ----------
-// Individual challenges can have their own page under /c/:slug/... rendered from a view.
+// These are pure/in-memory and touch no database.
 app.get('/c/coop-inspector/board', (req, res) => {
   res.render('challenge-pages/coop-inspector-board');
 });
@@ -687,10 +588,10 @@ app.get('/c/token-of-trust/api', (req, res) => {
 });
 
 // ---------- Scoreboard ----------
-app.get('/scoreboard', (req, res) => {
-  const { rows } = computeStandings();
+app.get('/scoreboard', ah(async (req, res) => {
+  const { rows } = await computeStandings();
   res.render('scoreboard', { rows: rows.slice(0, 100) });
-});
+}));
 
 // ---------- Profiles ----------
 // Convenience redirect to the logged-in user's own profile.
@@ -698,21 +599,21 @@ app.get('/me', requireAuth, (req, res) => {
   res.redirect(`/u/${encodeURIComponent(req.session.user.username)}`);
 });
 
-app.get('/u/:username', (req, res) => {
-  const user = stmts.publicUserByUsername.get(req.params.username);
+app.get('/u/:username', ah(async (req, res) => {
+  const user = await store.getPublicUserByUsername(req.params.username);
   if (!user) return res.status(404).render('404');
 
-  const { rows, valueById } = computeStandings();
+  const { rows, valueById } = await computeStandings();
   const standing = rows.find((r) => r.id === user.id)
     || { score: 0, rank: rows.length + 1, first_bloods: 0 };
 
   // Solve list with each challenge's current (dynamic) value.
-  const solves = stmts.solvesForUser.all(user.id).map((s) => ({
+  const solves = (await store.solvesForUser(user.id)).map((s) => ({
     ...s,
     value: valueById.get(s.challenge_id) ?? s.points,
   }));
-  const hintsSpent = stmts.hintsSpentForUser.get(user.id).spent;
-  const totalChallenges = db.prepare('SELECT COUNT(*) AS n FROM challenges').get().n;
+  const hintsSpent = await store.hintsSpentForUser(user.id);
+  const totalChallenges = await store.countChallenges();
 
   res.render('profile', {
     profile: user,
@@ -723,23 +624,19 @@ app.get('/u/:username', (req, res) => {
     hintsSpent,
     totalChallenges,
   });
-});
+}));
 
 // ---------- Admin (stats + moderation) ----------
-app.get('/admin', requireAdmin, (req, res) => {
-  const totals = {
-    users: stmts.countUsers.get().n,
-    challenges: stmts.countChallenges.get().n,
-    solves: stmts.countSolves.get().n,
-    hintUnlocks: stmts.countHintUnlocks.get().n,
-  };
+app.get('/admin', requireAdmin, ah(async (req, res) => {
+  const [uCount, cCount, sCount, hCount] = await Promise.all([
+    store.countUsers(), store.countChallenges(), store.countSolves(), store.countHintUnlocks(),
+  ]);
+  const totals = { users: uCount, challenges: cCount, solves: sCount, hintUnlocks: hCount };
 
-  const { rows, valueById, solveCount } = computeStandings();
-  const firstBloods = {};
-  for (const r of stmts.firstBloods.all()) firstBloods[r.challenge_id] = r.fb_user;
+  const { rows, valueById, solveCount, firstBloodByChallenge } = await computeStandings();
 
   // Per-challenge stats (no flags exposed).
-  const challenges = stmts.allChallenges.all()
+  const challenges = (await store.allChallenges())
     .map((c) => ({
       slug: c.slug,
       title: c.title,
@@ -747,15 +644,15 @@ app.get('/admin', requireAdmin, (req, res) => {
       points: c.points,
       value: valueById.get(c.id) ?? c.points,
       solveCount: solveCount.get(c.id) || 0,
-      firstBlood: firstBloods[c.id] || null,
+      firstBlood: firstBloodByChallenge.get(c.id) || null,
       solveRate: totals.users ? Math.round(((solveCount.get(c.id) || 0) / totals.users) * 100) : 0,
     }))
     .sort((a, b) => b.solveCount - a.solveCount || a.title.localeCompare(b.title));
 
   // Enrich standings rows with join date and admin flag.
-  const meta = new Map(stmts.usersWithMeta.all().map((u) => [u.id, u]));
+  const meta = new Map((await store.usersWithMeta()).map((u) => [u.id, u]));
   const hintSpend = new Map();
-  for (const r of stmts.hintSpendByUser.all()) hintSpend.set(r.uid, r.spent);
+  for (const r of await store.hintSpendByUser()) hintSpend.set(r.uid, r.spent);
   const users = rows.map((r) => ({
     ...r,
     created_at: (meta.get(r.id) || {}).created_at || 0,
@@ -767,29 +664,25 @@ app.get('/admin', requireAdmin, (req, res) => {
     totals,
     challenges,
     users,
-    recent: stmts.recentSolves.all(),
+    recent: await store.recentSolves(25),
   });
-});
+}));
 
 // Reset a player's progress (clears their solves and unlocked hints).
-app.post('/admin/users/:id/reset', requireAdmin, (req, res) => {
-  const target = stmts.userById.get(parseInt(req.params.id, 10));
+app.post('/admin/users/:id/reset', requireAdmin, ah(async (req, res) => {
+  const target = await store.getUserById(parseInt(req.params.id, 10));
   if (!target) {
     flash(req, 'error', 'No such user.');
     return res.redirect('/admin');
   }
-  const tx = db.transaction((uid) => {
-    stmts.deleteHintUnlocksForUser.run(uid);
-    stmts.deleteSolvesForUser.run(uid);
-  });
-  tx(target.id);
+  await store.resetUserProgress(target.id);
   flash(req, 'success', `Reset progress for ${target.username}.`);
   res.redirect('/admin');
-});
+}));
 
 // Delete a player account (cascades to solves and hint unlocks).
-app.post('/admin/users/:id/delete', requireAdmin, (req, res) => {
-  const target = stmts.userById.get(parseInt(req.params.id, 10));
+app.post('/admin/users/:id/delete', requireAdmin, ah(async (req, res) => {
+  const target = await store.getUserById(parseInt(req.params.id, 10));
   if (!target) {
     flash(req, 'error', 'No such user.');
     return res.redirect('/admin');
@@ -798,24 +691,36 @@ app.post('/admin/users/:id/delete', requireAdmin, (req, res) => {
     flash(req, 'error', 'Admin accounts cannot be deleted from here.');
     return res.redirect('/admin');
   }
-  stmts.deleteUserById.run(target.id);
+  await store.deleteUser(target.id);
   flash(req, 'success', `Deleted user ${target.username}.`);
   res.redirect('/admin');
-});
+}));
 
 // ---------- Health check (used by Docker / load balancers) ----------
-app.get('/healthz', (req, res) => {
+app.get('/healthz', ah(async (req, res) => {
   try {
-    const { n } = db.prepare('SELECT COUNT(*) AS n FROM challenges').get();
-    res.json({ status: 'ok', challenges: n, uptime: Math.round(process.uptime()) });
+    const n = await store.countChallenges();
+    res.json({ status: 'ok', backend: store.kind, challenges: n, uptime: Math.round(process.uptime()) });
   } catch (err) {
     res.status(503).json({ status: 'error', error: err.message });
   }
-});
+}));
 
-// ---------- 404 ----------
+// ---------- 404 + error handler ----------
 app.use((req, res) => res.status(404).render('404'));
-
-app.listen(PORT, () => {
-  console.log(`🐔  KFC is running at http://localhost:${PORT}`);
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  console.error(err);
+  res.status(500).send('Internal server error');
 });
+
+// Initialise the datastore (create schema + seed) before accepting traffic.
+store.init(challengeSeed)
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`🐔  KFC is running at http://localhost:${PORT}  [${store.kind}]`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to start KFC:', err);
+    process.exit(1);
+  });

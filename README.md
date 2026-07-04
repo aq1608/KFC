@@ -41,8 +41,8 @@ where `n` is the number of solves, `floor = ceil(initial × DYN_MIN_RATIO)`, and
 | Runtime     | Node.js                             |
 | Framework   | Express 4                           |
 | Templating  | EJS                                 |
-| Database    | SQLite (via better-sqlite3)         |
-| Sessions    | express-session + connect-sqlite3   |
+| Database    | SQLite (default) or Postgres        |
+| Sessions    | express-session (SQLite or PG store) |
 | Auth        | bcrypt                              |
 
 ## Getting Started
@@ -155,6 +155,20 @@ The bundled [`railway.json`](railway.json) tells Railway to build from the `Dock
 3. Set variables: `KFC_DATA_DIR=/app/data`, plus `SESSION_SECRET`, `TOT_SECRET`, and `ADMIN_USERS`.
 4. Deploy. Keep it at a single replica (`numReplicas: 1`) — SQLite is single-instance.
 
+### Using Postgres (free-tier hosting)
+
+KFC runs on **SQLite by default** (zero config). Setting `DATABASE_URL` switches it to **Postgres**, which unlocks the genuinely-free hosting combos — e.g. a **Render free web service** (or Railway/Fly) plus a **free managed Postgres** from [Neon](https://neon.tech), [Supabase](https://supabase.com), or Render. Postgres also removes the single-instance limitation, so you can scale horizontally.
+
+```bash
+# Point KFC at any Postgres and it creates its own schema + seeds on boot
+DATABASE_URL="postgres://user:pass@host:5432/kfc" npm start
+```
+
+- The backend is chosen at startup by the presence of `DATABASE_URL` (see [`store/`](store/)); both backends implement the same interface.
+- Sessions are stored in Postgres too (via `connect-pg-simple`), so no local disk is needed — perfect for ephemeral-filesystem hosts.
+- SSL is enabled automatically for remote hosts (disabled for `localhost`); most managed providers require it.
+- `/healthz` reports which backend is active (`"backend": "sqlite" | "postgres"`).
+
 ### Environment Variables
 
 | Variable               | Description                                                        | Default                           |
@@ -163,6 +177,7 @@ The bundled [`railway.json`](railway.json) tells Railway to build from the `Dock
 | `SESSION_SECRET`       | Secret used to sign session cookies                                | `cluck-cluck-change-me-in-prod`   |
 | `TOT_SECRET`           | HS256 signing key for the Token of Trust challenge                 | `coop-signing-key-do-not-share`   |
 | `KFC_DATA_DIR`         | Directory for the SQLite databases (`kfc.db`, `sessions.db`)       | `./data`                          |
+| `DATABASE_URL`         | Postgres connection string. If set, KFC uses Postgres instead of SQLite | *(unset → SQLite)*          |
 | `DYN_DECAY`            | Solves at which a challenge decays to its floor value              | `20`                              |
 | `DYN_MIN_RATIO`        | Challenge value floor, as a fraction of its initial points         | `0.4`                             |
 | `FLAG_RATE_MAX`        | Max flag submissions per user per window (rate limiting)           | `15`                              |
