@@ -35,9 +35,22 @@ app.use(session({
   },
 }));
 
+// Admins are configured out-of-band via the ADMIN_USERS env var (comma-separated
+// usernames). Empty by default, so the admin area is locked down unless opted in.
+const ADMIN_USERS = new Set(
+  String(process.env.ADMIN_USERS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+function isAdmin(username) {
+  return ADMIN_USERS.has(String(username || '').toLowerCase());
+}
+
 // Expose useful bits to every template.
 app.use((req, res, next) => {
   res.locals.currentUser = req.session.user || null;
+  res.locals.isAdmin = req.session.user ? isAdmin(req.session.user.username) : false;
   res.locals.flash = req.session.flash || null;
   delete req.session.flash;
   next();
@@ -65,6 +78,18 @@ function requireAuth(req, res, next) {
   if (!req.session.user) {
     flash(req, 'error', 'You need to log in first.');
     return res.redirect('/login');
+  }
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.session.user) {
+    flash(req, 'error', 'You need to log in first.');
+    return res.redirect('/login');
+  }
+  if (!isAdmin(req.session.user.username)) {
+    // Don't advertise the admin area to non-admins.
+    return res.status(404).render('404');
   }
   next();
 }
@@ -169,6 +194,25 @@ const stmts = {
   unlockHint: db.prepare(
     'INSERT OR IGNORE INTO hint_unlocks (user_id, hint_id) VALUES (?, ?)'
   ),
+
+  // ----- Admin -----
+  countUsers: db.prepare('SELECT COUNT(*) AS n FROM users'),
+  countChallenges: db.prepare('SELECT COUNT(*) AS n FROM challenges'),
+  countSolves: db.prepare('SELECT COUNT(*) AS n FROM solves'),
+  countHintUnlocks: db.prepare('SELECT COUNT(*) AS n FROM hint_unlocks'),
+  usersWithMeta: db.prepare('SELECT id, username, created_at FROM users'),
+  userById: db.prepare('SELECT id, username FROM users WHERE id = ?'),
+  recentSolves: db.prepare(`
+    SELECT u.username, c.title, c.slug, s.solved_at
+    FROM solves s
+    JOIN users u      ON u.id = s.user_id
+    JOIN challenges c ON c.id = s.challenge_id
+    ORDER BY s.solved_at DESC, u.username ASC
+    LIMIT 25
+  `),
+  deleteSolvesForUser: db.prepare('DELETE FROM solves WHERE user_id = ?'),
+  deleteHintUnlocksForUser: db.prepare('DELETE FROM hint_unlocks WHERE user_id = ?'),
+  deleteUserById: db.prepare('DELETE FROM users WHERE id = ?'),
 };
 
 // Build lookup maps of { challenge_id -> solve count } and { challenge_id -> first-blood username }.
@@ -599,6 +643,84 @@ app.get('/u/:username', (req, res) => {
     hintsSpent,
     totalChallenges,
   });
+});
+
+// ---------- Admin (stats + moderation) ----------
+app.get('/admin', requireAdmin, (req, res) => {
+  const totals = {
+    users: stmts.countUsers.get().n,
+    challenges: stmts.countChallenges.get().n,
+    solves: stmts.countSolves.get().n,
+    hintUnlocks: stmts.countHintUnlocks.get().n,
+  };
+
+  const { rows, valueById, solveCount } = computeStandings();
+  const firstBloods = {};
+  for (const r of stmts.firstBloods.all()) firstBloods[r.challenge_id] = r.fb_user;
+
+  // Per-challenge stats (no flags exposed).
+  const challenges = stmts.allChallenges.all()
+    .map((c) => ({
+      slug: c.slug,
+      title: c.title,
+      category: c.category,
+      points: c.points,
+      value: valueById.get(c.id) ?? c.points,
+      solveCount: solveCount.get(c.id) || 0,
+      firstBlood: firstBloods[c.id] || null,
+      solveRate: totals.users ? Math.round(((solveCount.get(c.id) || 0) / totals.users) * 100) : 0,
+    }))
+    .sort((a, b) => b.solveCount - a.solveCount || a.title.localeCompare(b.title));
+
+  // Enrich standings rows with join date and admin flag.
+  const meta = new Map(stmts.usersWithMeta.all().map((u) => [u.id, u]));
+  const hintSpend = new Map();
+  for (const r of stmts.hintSpendByUser.all()) hintSpend.set(r.uid, r.spent);
+  const users = rows.map((r) => ({
+    ...r,
+    created_at: (meta.get(r.id) || {}).created_at || 0,
+    hint_spend: hintSpend.get(r.id) || 0,
+    is_admin: isAdmin(r.username),
+  }));
+
+  res.render('admin', {
+    totals,
+    challenges,
+    users,
+    recent: stmts.recentSolves.all(),
+  });
+});
+
+// Reset a player's progress (clears their solves and unlocked hints).
+app.post('/admin/users/:id/reset', requireAdmin, (req, res) => {
+  const target = stmts.userById.get(parseInt(req.params.id, 10));
+  if (!target) {
+    flash(req, 'error', 'No such user.');
+    return res.redirect('/admin');
+  }
+  const tx = db.transaction((uid) => {
+    stmts.deleteHintUnlocksForUser.run(uid);
+    stmts.deleteSolvesForUser.run(uid);
+  });
+  tx(target.id);
+  flash(req, 'success', `Reset progress for ${target.username}.`);
+  res.redirect('/admin');
+});
+
+// Delete a player account (cascades to solves and hint unlocks).
+app.post('/admin/users/:id/delete', requireAdmin, (req, res) => {
+  const target = stmts.userById.get(parseInt(req.params.id, 10));
+  if (!target) {
+    flash(req, 'error', 'No such user.');
+    return res.redirect('/admin');
+  }
+  if (isAdmin(target.username)) {
+    flash(req, 'error', 'Admin accounts cannot be deleted from here.');
+    return res.redirect('/admin');
+  }
+  stmts.deleteUserById.run(target.id);
+  flash(req, 'success', `Deleted user ${target.username}.`);
+  res.redirect('/admin');
 });
 
 // ---------- Health check (used by Docker / load balancers) ----------
