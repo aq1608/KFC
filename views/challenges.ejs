@@ -6,6 +6,7 @@
 <% const catOrder = ['web', 'pwn', 'crypto', 'rev', 'stego', 'forensics', 'osint', 'misc']; %>
 <% const catLabel = { web: 'Web', pwn: 'Pwn', crypto: 'Crypto', rev: 'Reversing', stego: 'Stego', forensics: 'Forensics', osint: 'OSINT', misc: 'Misc' }; %>
 <% const catIcon  = { web: '🕸️', pwn: '💥', crypto: '🔐', rev: '🔧', stego: '🖼️', forensics: '🧪', osint: '🔎', misc: '🎲' }; %>
+<% const diffLabel = { easy: 'Easy', medium: 'Medium', hard: 'Hard' }; %>
 
 <%
   // Render the known categories in order, then any leftovers alphabetically.
@@ -14,12 +15,34 @@
   const renderCats = knownCats.concat(otherCats);
 %>
 
+<div class="filter-bar" id="filters">
+  <div class="filter-group" data-filter="difficulty">
+    <span class="filter-title">Difficulty</span>
+    <button type="button" class="filter-btn active" data-value="all">All</button>
+    <button type="button" class="filter-btn" data-value="easy">Easy</button>
+    <button type="button" class="filter-btn" data-value="medium">Medium</button>
+    <button type="button" class="filter-btn" data-value="hard">Hard</button>
+  </div>
+  <div class="filter-group" data-filter="status">
+    <span class="filter-title">Status</span>
+    <button type="button" class="filter-btn active" data-value="all">All</button>
+    <button type="button" class="filter-btn" data-value="unsolved">Unsolved</button>
+    <button type="button" class="filter-btn" data-value="solved">Solved</button>
+  </div>
+</div>
+
 <% function card(c) { %>
-  <li class="challenge-card <%= c.solved ? 'solved' : '' %>">
+  <li class="challenge-card <%= c.solved ? 'solved' : '' %>" data-difficulty="<%= c.difficulty %>" data-solved="<%= c.solved ? 'solved' : 'unsolved' %>">
     <a href="/challenges/<%= c.slug %>">
-      <div class="cc-title"><%= c.title %></div>
+      <div class="cc-title">
+        <%= c.title %>
+        <span class="diff-badge diff-<%= c.difficulty %>"><%= diffLabel[c.difficulty] || c.difficulty %></span>
+      </div>
       <div class="cc-meta">
-        <span class="pts"><%= c.points %> pts</span>
+        <span class="pts">
+          <%= c.value %> pts
+          <% if (c.value < c.points) { %><span class="pts-initial" title="Started at <%= c.points %>; decays as more solve it"><%= c.points %></span><% } %>
+        </span>
         <% if (c.solved) { %><span class="badge-solved">🥚 solved</span><% } %>
       </div>
       <div class="cc-stats">
@@ -35,12 +58,51 @@
 <% } %>
 
 <% for (const cat of renderCats) { %>
-  <section class="cat-block">
+  <section class="cat-block" data-category="<%= cat %>">
     <h2><span class="cat-icon"><%= catIcon[cat] || '🎯' %></span> <%= catLabel[cat] || cat %></h2>
     <ul class="challenge-grid">
       <% for (const c of byCategory[cat]) { card(c); } %>
     </ul>
   </section>
 <% } %>
+
+<p class="no-matches" id="noMatches" hidden>No challenges match these filters.</p>
+
+<script>
+  (function () {
+    var filters = { difficulty: 'all', status: 'all' };
+    var bar = document.getElementById('filters');
+    if (!bar) return;
+
+    function apply() {
+      var anyVisible = false;
+      document.querySelectorAll('.cat-block').forEach(function (section) {
+        var sectionVisible = false;
+        section.querySelectorAll('.challenge-card').forEach(function (card) {
+          var okDiff = filters.difficulty === 'all' || card.dataset.difficulty === filters.difficulty;
+          var okStatus = filters.status === 'all' || card.dataset.solved === filters.status;
+          var show = okDiff && okStatus;
+          card.hidden = !show;
+          if (show) { sectionVisible = true; anyVisible = true; }
+        });
+        section.hidden = !sectionVisible;
+      });
+      var none = document.getElementById('noMatches');
+      if (none) none.hidden = anyVisible;
+    }
+
+    bar.querySelectorAll('.filter-group').forEach(function (group) {
+      var key = group.dataset.filter;
+      group.querySelectorAll('.filter-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          filters[key] = btn.dataset.value;
+          group.querySelectorAll('.filter-btn').forEach(function (b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          apply();
+        });
+      });
+    });
+  })();
+</script>
 
 <%- include('partials/footer') %>

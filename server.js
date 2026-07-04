@@ -7,6 +7,8 @@ const bcrypt = require('bcrypt');
 
 const { db, seedChallenges } = require('./db');
 const challengeSeed = require('./challenges.seed');
+const { dynamicValue } = require('./scoring');
+const { difficultyFor } = require('./difficulty');
 
 seedChallenges(challengeSeed);
 
@@ -23,7 +25,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public'), { redirect: false }));
 
 app.use(session({
-  store: new SQLiteStore({ db: 'sessions.db', dir: path.join(__dirname, 'data') }),
+  store: new SQLiteStore({ db: 'sessions.db', dir: process.env.KFC_DATA_DIR || path.join(__dirname, 'data') }),
   secret: process.env.SESSION_SECRET || 'cluck-cluck-change-me-in-prod',
   resave: false,
   saveUninitialized: false,
@@ -34,9 +36,22 @@ app.use(session({
   },
 }));
 
+// Admins are configured out-of-band via the ADMIN_USERS env var (comma-separated
+// usernames). Empty by default, so the admin area is locked down unless opted in.
+const ADMIN_USERS = new Set(
+  String(process.env.ADMIN_USERS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+function isAdmin(username) {
+  return ADMIN_USERS.has(String(username || '').toLowerCase());
+}
+
 // Expose useful bits to every template.
 app.use((req, res, next) => {
   res.locals.currentUser = req.session.user || null;
+  res.locals.isAdmin = req.session.user ? isAdmin(req.session.user.username) : false;
   res.locals.flash = req.session.flash || null;
   delete req.session.flash;
   next();
@@ -68,6 +83,37 @@ function requireAuth(req, res, next) {
   next();
 }
 
+function requireAdmin(req, res, next) {
+  if (!req.session.user) {
+    flash(req, 'error', 'You need to log in first.');
+    return res.redirect('/login');
+  }
+  if (!isAdmin(req.session.user.username)) {
+    // Don't advertise the admin area to non-admins.
+    return res.status(404).render('404');
+  }
+  next();
+}
+
+// ---------- Flag-submission rate limiting (anti-brute-force) ----------
+// Simple in-memory sliding window, keyed by user id. Submissions require auth,
+// so per-user is sufficient and avoids penalising users behind shared NAT.
+const FLAG_RATE_MAX = Number(process.env.FLAG_RATE_MAX) || 15;
+const FLAG_RATE_WINDOW_MS = Number(process.env.FLAG_RATE_WINDOW_MS) || 60_000;
+const submitLog = new Map(); // userId -> number[] of recent submit timestamps
+
+function allowFlagSubmission(userId) {
+  const now = Date.now();
+  const recent = (submitLog.get(userId) || []).filter((t) => now - t < FLAG_RATE_WINDOW_MS);
+  if (recent.length >= FLAG_RATE_MAX) {
+    submitLog.set(userId, recent);
+    return false;
+  }
+  recent.push(now);
+  submitLog.set(userId, recent);
+  return true;
+}
+
 // ---------- Prepared statements ----------
 const stmts = {
   userByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
@@ -84,17 +130,15 @@ const stmts = {
   insertSolve: db.prepare('INSERT OR IGNORE INTO solves (user_id, challenge_id) VALUES (?, ?)'),
   solvedIdsForUser: db.prepare('SELECT challenge_id FROM solves WHERE user_id = ?'),
 
-  scoreboard: db.prepare(`
-    SELECT u.id, u.username,
-           COALESCE(SUM(c.points), 0) AS score,
-           COUNT(s.challenge_id)      AS solved_count,
-           COALESCE(MAX(s.solved_at), 0) AS last_solve
-    FROM users u
-    LEFT JOIN solves s     ON s.user_id = u.id
-    LEFT JOIN challenges c ON c.id = s.challenge_id
-    GROUP BY u.id
-    ORDER BY score DESC, last_solve ASC, u.username ASC
-    LIMIT 100
+  // ----- Raw data for JS-computed standings (dynamic scoring) -----
+  allUsers: db.prepare('SELECT id, username FROM users'),
+  allSolves: db.prepare('SELECT user_id, challenge_id, solved_at FROM solves'),
+  challengePoints: db.prepare('SELECT id, points FROM challenges'),
+  hintSpendByUser: db.prepare(`
+    SELECT hu.user_id AS uid, COALESCE(SUM(h.cost), 0) AS spent
+    FROM hint_unlocks hu
+    JOIN hints h ON h.id = hu.hint_id
+    GROUP BY hu.user_id
   `),
 
   // Solve count per challenge.
@@ -103,6 +147,7 @@ const stmts = {
     FROM solves
     GROUP BY challenge_id
   `),
+  solveCountForChallenge: db.prepare('SELECT COUNT(*) AS n FROM solves WHERE challenge_id = ?'),
 
   // First blood per challenge. SQLite's MIN() aggregate returns the row that
   // owns the minimum, so u.username is the earliest solver for each challenge.
@@ -115,60 +160,60 @@ const stmts = {
     GROUP BY s.challenge_id
   `),
 
-  // First-blood count per user (how many challenges they solved first).
-  firstBloodCounts: db.prepare(`
-    SELECT user_id, COUNT(*) AS n FROM (
-      SELECT challenge_id, user_id, MIN(solved_at) AS m
-      FROM solves
-      GROUP BY challenge_id
-    )
-    GROUP BY user_id
-  `),
-
   // Public profile lookup (no password hash).
   publicUserByUsername: db.prepare(
     'SELECT id, username, created_at FROM users WHERE username = ?'
   ),
 
-  // A user's solves, newest first, with challenge details.
+  // A user's solves, newest first, with challenge details (incl. id for value lookup).
   solvesForUser: db.prepare(`
-    SELECT c.slug, c.title, c.category, c.points, s.solved_at
+    SELECT c.id AS challenge_id, c.slug, c.title, c.category, c.points, s.solved_at
     FROM solves s
     JOIN challenges c ON c.id = s.challenge_id
     WHERE s.user_id = ?
     ORDER BY s.solved_at DESC, c.points DESC
   `),
 
-  // A single user's total score.
-  scoreForUser: db.prepare(`
-    SELECT COALESCE(SUM(c.points), 0) AS score
+  // Total hint points a user has spent.
+  hintsSpentForUser: db.prepare(`
+    SELECT COALESCE(SUM(h.cost), 0) AS spent
+    FROM hint_unlocks hu
+    JOIN hints h ON h.id = hu.hint_id
+    WHERE hu.user_id = ?
+  `),
+
+  // ----- Hints -----
+  hintsForChallenge: db.prepare(
+    'SELECT id, idx, body, cost FROM hints WHERE challenge_id = ? ORDER BY idx'
+  ),
+  hintByChallengeAndIdx: db.prepare(
+    'SELECT * FROM hints WHERE challenge_id = ? AND idx = ?'
+  ),
+  unlockedHintIdsForUser: db.prepare(
+    'SELECT hint_id FROM hint_unlocks WHERE user_id = ?'
+  ),
+  unlockHint: db.prepare(
+    'INSERT OR IGNORE INTO hint_unlocks (user_id, hint_id) VALUES (?, ?)'
+  ),
+
+  // ----- Admin -----
+  countUsers: db.prepare('SELECT COUNT(*) AS n FROM users'),
+  countChallenges: db.prepare('SELECT COUNT(*) AS n FROM challenges'),
+  countSolves: db.prepare('SELECT COUNT(*) AS n FROM solves'),
+  countHintUnlocks: db.prepare('SELECT COUNT(*) AS n FROM hint_unlocks'),
+  usersWithMeta: db.prepare('SELECT id, username, created_at FROM users'),
+  userById: db.prepare('SELECT id, username FROM users WHERE id = ?'),
+  recentSolves: db.prepare(`
+    SELECT u.username, c.title, c.slug, s.solved_at
     FROM solves s
+    JOIN users u      ON u.id = s.user_id
     JOIN challenges c ON c.id = s.challenge_id
-    WHERE s.user_id = ?
+    ORDER BY s.solved_at DESC, u.username ASC
+    LIMIT 25
   `),
-
-  // Rank = 1 + number of users with a strictly higher score.
-  rankForUser: db.prepare(`
-    WITH scores AS (
-      SELECT u.id AS uid, COALESCE(SUM(c.points), 0) AS score
-      FROM users u
-      LEFT JOIN solves s     ON s.user_id = u.id
-      LEFT JOIN challenges c ON c.id = s.challenge_id
-      GROUP BY u.id
-    )
-    SELECT (SELECT COUNT(*) FROM scores b WHERE b.score > a.score) + 1 AS rank
-    FROM scores a
-    WHERE a.uid = ?
-  `),
-
-  firstBloodCountForUser: db.prepare(`
-    SELECT COUNT(*) AS n FROM (
-      SELECT challenge_id, user_id, MIN(solved_at) AS m
-      FROM solves
-      GROUP BY challenge_id
-    )
-    WHERE user_id = ?
-  `),
+  deleteSolvesForUser: db.prepare('DELETE FROM solves WHERE user_id = ?'),
+  deleteHintUnlocksForUser: db.prepare('DELETE FROM hint_unlocks WHERE user_id = ?'),
+  deleteUserById: db.prepare('DELETE FROM users WHERE id = ?'),
 };
 
 // Build lookup maps of { challenge_id -> solve count } and { challenge_id -> first-blood username }.
@@ -178,6 +223,70 @@ function challengeStatMaps() {
   const firstBloods = {};
   for (const r of stmts.firstBloods.all()) firstBloods[r.challenge_id] = r.fb_user;
   return { counts, firstBloods };
+}
+
+// Compute the full standings using dynamic scoring. Each solved challenge is
+// worth its *current* value (which decays with total solves), minus the points
+// a player has spent unlocking hints. Returns sorted rows (with rank) plus the
+// per-challenge current value map for reuse by callers.
+function computeStandings() {
+  const users = stmts.allUsers.all();
+  const solves = stmts.allSolves.all();
+  const pointsById = new Map(stmts.challengePoints.all().map((c) => [c.id, c.points]));
+
+  const solveCount = new Map();
+  for (const s of solves) solveCount.set(s.challenge_id, (solveCount.get(s.challenge_id) || 0) + 1);
+
+  const valueById = new Map();
+  for (const [cid, pts] of pointsById) valueById.set(cid, dynamicValue(pts, solveCount.get(cid) || 0));
+
+  // First blood (earliest solver) per challenge.
+  const firstBy = new Map();
+  for (const s of solves) {
+    const cur = firstBy.get(s.challenge_id);
+    if (!cur || s.solved_at < cur.at || (s.solved_at === cur.at && s.user_id < cur.user_id)) {
+      firstBy.set(s.challenge_id, { user_id: s.user_id, at: s.solved_at });
+    }
+  }
+  const fbCount = new Map();
+  for (const { user_id } of firstBy.values()) fbCount.set(user_id, (fbCount.get(user_id) || 0) + 1);
+
+  const hintSpend = new Map();
+  for (const r of stmts.hintSpendByUser.all()) hintSpend.set(r.uid, r.spent);
+
+  const solvesByUser = new Map();
+  for (const s of solves) {
+    if (!solvesByUser.has(s.user_id)) solvesByUser.set(s.user_id, []);
+    solvesByUser.get(s.user_id).push(s);
+  }
+
+  const rows = users.map((u) => {
+    const mine = solvesByUser.get(u.id) || [];
+    let score = 0;
+    let last = 0;
+    for (const s of mine) {
+      score += valueById.get(s.challenge_id) || 0;
+      if (s.solved_at > last) last = s.solved_at;
+    }
+    score -= hintSpend.get(u.id) || 0;
+    return {
+      id: u.id,
+      username: u.username,
+      score,
+      solved_count: mine.length,
+      last_solve: last,
+      first_bloods: fbCount.get(u.id) || 0,
+    };
+  });
+
+  rows.sort((a, b) =>
+    b.score - a.score ||
+    a.last_solve - b.last_solve ||
+    a.username.localeCompare(b.username)
+  );
+  rows.forEach((r, i) => { r.rank = i + 1; });
+
+  return { rows, valueById, solveCount };
 }
 
 // ---------- Public pages ----------
@@ -251,11 +360,14 @@ app.get('/challenges', requireAuth, (req, res) => {
   const { counts, firstBloods } = challengeStatMaps();
   const byCategory = {};
   for (const c of all) {
+    const solveCount = counts[c.id] || 0;
     (byCategory[c.category] ||= []).push({
       ...c,
       solved: solvedIds.has(c.id),
-      solveCount: counts[c.id] || 0,
+      solveCount,
       firstBlood: firstBloods[c.id] || null,
+      value: dynamicValue(c.points, solveCount),
+      difficulty: difficultyFor(c.points),
     });
   }
   res.render('challenges', { byCategory });
@@ -265,19 +377,56 @@ app.get('/challenges/:slug', requireAuth, (req, res) => {
   const c = stmts.challengeBySlug.get(req.params.slug);
   if (!c) return res.status(404).render('404');
   const solved = !!stmts.solveExists.get(req.session.user.id, c.id);
-  const solveCount = (stmts.solveCounts.all().find((r) => r.challenge_id === c.id) || {}).n || 0;
+  const solveCount = stmts.solveCountForChallenge.get(c.id).n;
   const firstBlood = (stmts.firstBloods.all().find((r) => r.challenge_id === c.id) || {}).fb_user || null;
+  const currentValue = dynamicValue(c.points, solveCount);
+
+  // Only send hint bodies for hints this user has already unlocked; locked
+  // hint text never reaches the client.
+  const unlockedIds = new Set(stmts.unlockedHintIdsForUser.all(req.session.user.id).map((r) => r.hint_id));
+  const hints = stmts.hintsForChallenge.all(c.id).map((h) => {
+    const unlocked = unlockedIds.has(h.id);
+    return { idx: h.idx, cost: h.cost, unlocked, body: unlocked ? h.body : null };
+  });
+
   res.render('challenge', {
     challenge: { id: c.id, slug: c.slug, title: c.title, category: c.category, points: c.points, description: c.description },
     solved,
     solveCount,
     firstBlood,
+    currentValue,
+    difficulty: difficultyFor(c.points),
+    hints,
   });
+});
+
+// Unlock a hint (costs points, which are subtracted from the user's score).
+app.post('/challenges/:slug/hint/:idx', requireAuth, (req, res) => {
+  const c = stmts.challengeBySlug.get(req.params.slug);
+  if (!c) return res.status(404).render('404');
+  const idx = parseInt(req.params.idx, 10);
+  const hint = Number.isInteger(idx) ? stmts.hintByChallengeAndIdx.get(c.id, idx) : null;
+  if (!hint) {
+    flash(req, 'error', 'That hint does not exist.');
+    return res.redirect(`/challenges/${c.slug}`);
+  }
+  const info = stmts.unlockHint.run(req.session.user.id, hint.id);
+  if (info.changes > 0) {
+    flash(req, 'success', `Hint unlocked — ${hint.cost} point${hint.cost === 1 ? '' : 's'} deducted.`);
+  } else {
+    flash(req, 'success', 'You had already unlocked that hint.');
+  }
+  res.redirect(`/challenges/${c.slug}#hints`);
 });
 
 app.post('/challenges/:slug/submit', requireAuth, (req, res) => {
   const c = stmts.challengeBySlug.get(req.params.slug);
   if (!c) return res.status(404).render('404');
+
+  if (!allowFlagSubmission(req.session.user.id)) {
+    flash(req, 'error', 'Whoa there — too many flag attempts. Take a breather and try again in a moment.');
+    return res.redirect(`/challenges/${c.slug}`);
+  }
 
   const submitted = String(req.body.flag || '').trim();
   const correct = submitted === c.flag;
@@ -285,7 +434,8 @@ app.post('/challenges/:slug/submit', requireAuth, (req, res) => {
   if (correct) {
     const info = stmts.insertSolve.run(req.session.user.id, c.id);
     if (info.changes > 0) {
-      flash(req, 'success', `Correct! +${c.points} points. 🐔`);
+      const earned = dynamicValue(c.points, stmts.solveCountForChallenge.get(c.id).n);
+      flash(req, 'success', `Correct! +${earned} points. 🐔`);
     } else {
       flash(req, 'success', 'Correct — but you already had this one.');
     }
@@ -461,11 +611,8 @@ app.get('/c/token-of-trust/api', (req, res) => {
 
 // ---------- Scoreboard ----------
 app.get('/scoreboard', (req, res) => {
-  const rows = stmts.scoreboard.all();
-  const fbCounts = {};
-  for (const r of stmts.firstBloodCounts.all()) fbCounts[r.user_id] = r.n;
-  const enriched = rows.map((r) => ({ ...r, first_bloods: fbCounts[r.id] || 0 }));
-  res.render('scoreboard', { rows: enriched });
+  const { rows } = computeStandings();
+  res.render('scoreboard', { rows: rows.slice(0, 100) });
 });
 
 // ---------- Profiles ----------
@@ -478,20 +625,105 @@ app.get('/u/:username', (req, res) => {
   const user = stmts.publicUserByUsername.get(req.params.username);
   if (!user) return res.status(404).render('404');
 
-  const solves = stmts.solvesForUser.all(user.id);
-  const score = stmts.scoreForUser.get(user.id).score;
-  const rank = stmts.rankForUser.get(user.id).rank;
-  const firstBloods = stmts.firstBloodCountForUser.get(user.id).n;
+  const { rows, valueById } = computeStandings();
+  const standing = rows.find((r) => r.id === user.id)
+    || { score: 0, rank: rows.length + 1, first_bloods: 0 };
+
+  // Solve list with each challenge's current (dynamic) value.
+  const solves = stmts.solvesForUser.all(user.id).map((s) => ({
+    ...s,
+    value: valueById.get(s.challenge_id) ?? s.points,
+  }));
+  const hintsSpent = stmts.hintsSpentForUser.get(user.id).spent;
   const totalChallenges = db.prepare('SELECT COUNT(*) AS n FROM challenges').get().n;
 
   res.render('profile', {
     profile: user,
     solves,
-    score,
-    rank,
-    firstBloods,
+    score: standing.score,
+    rank: standing.rank,
+    firstBloods: standing.first_bloods,
+    hintsSpent,
     totalChallenges,
   });
+});
+
+// ---------- Admin (stats + moderation) ----------
+app.get('/admin', requireAdmin, (req, res) => {
+  const totals = {
+    users: stmts.countUsers.get().n,
+    challenges: stmts.countChallenges.get().n,
+    solves: stmts.countSolves.get().n,
+    hintUnlocks: stmts.countHintUnlocks.get().n,
+  };
+
+  const { rows, valueById, solveCount } = computeStandings();
+  const firstBloods = {};
+  for (const r of stmts.firstBloods.all()) firstBloods[r.challenge_id] = r.fb_user;
+
+  // Per-challenge stats (no flags exposed).
+  const challenges = stmts.allChallenges.all()
+    .map((c) => ({
+      slug: c.slug,
+      title: c.title,
+      category: c.category,
+      points: c.points,
+      value: valueById.get(c.id) ?? c.points,
+      solveCount: solveCount.get(c.id) || 0,
+      firstBlood: firstBloods[c.id] || null,
+      solveRate: totals.users ? Math.round(((solveCount.get(c.id) || 0) / totals.users) * 100) : 0,
+    }))
+    .sort((a, b) => b.solveCount - a.solveCount || a.title.localeCompare(b.title));
+
+  // Enrich standings rows with join date and admin flag.
+  const meta = new Map(stmts.usersWithMeta.all().map((u) => [u.id, u]));
+  const hintSpend = new Map();
+  for (const r of stmts.hintSpendByUser.all()) hintSpend.set(r.uid, r.spent);
+  const users = rows.map((r) => ({
+    ...r,
+    created_at: (meta.get(r.id) || {}).created_at || 0,
+    hint_spend: hintSpend.get(r.id) || 0,
+    is_admin: isAdmin(r.username),
+  }));
+
+  res.render('admin', {
+    totals,
+    challenges,
+    users,
+    recent: stmts.recentSolves.all(),
+  });
+});
+
+// Reset a player's progress (clears their solves and unlocked hints).
+app.post('/admin/users/:id/reset', requireAdmin, (req, res) => {
+  const target = stmts.userById.get(parseInt(req.params.id, 10));
+  if (!target) {
+    flash(req, 'error', 'No such user.');
+    return res.redirect('/admin');
+  }
+  const tx = db.transaction((uid) => {
+    stmts.deleteHintUnlocksForUser.run(uid);
+    stmts.deleteSolvesForUser.run(uid);
+  });
+  tx(target.id);
+  flash(req, 'success', `Reset progress for ${target.username}.`);
+  res.redirect('/admin');
+});
+
+// Delete a player account (cascades to solves and hint unlocks).
+app.post('/admin/users/:id/delete', requireAdmin, (req, res) => {
+  const target = stmts.userById.get(parseInt(req.params.id, 10));
+  if (!target) {
+    flash(req, 'error', 'No such user.');
+    return res.redirect('/admin');
+  }
+  if (isAdmin(target.username)) {
+    flash(req, 'error', 'Admin accounts cannot be deleted from here.');
+    return res.redirect('/admin');
+  }
+  stmts.deleteUserById.run(target.id);
+  flash(req, 'success', `Deleted user ${target.username}.`);
+  res.redirect('/admin');
 });
 
 // ---------- Health check (used by Docker / load balancers) ----------

@@ -188,6 +188,13 @@ pre { padding: 0.75em 1em; overflow-x: auto; }
 .cc-title { font-weight: 800; font-size: 1.05rem; margin-bottom: 0.5rem; }
 .cc-meta { display: flex; align-items: center; justify-content: space-between; font-size: 0.9rem; color: var(--brown); }
 .pts { font-weight: 700; }
+.pts-initial {
+  text-decoration: line-through;
+  opacity: 0.55;
+  font-weight: 600;
+  margin-left: 0.25em;
+  font-size: 0.85em;
+}
 .badge-solved { color: #274d19; background: #d8ecc0; border-radius: 999px; padding: 0.1em 0.6em; font-weight: 700; font-size: 0.8rem; }
 
 /* ------- Challenge detail ------- */
@@ -431,3 +438,137 @@ pre { padding: 0.75em 1em; overflow-x: auto; }
 .solve-title:hover { color: var(--coop-red); }
 .solve-pts { font-weight: 800; color: var(--coop-red); }
 .solve-when { font-size: 0.8rem; color: var(--ink-soft); font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+
+/* ------- Hints ------- */
+.hints {
+  margin: 1.5rem 0;
+  background: var(--cream-2);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+}
+.hints h2 { margin-top: 0; font-size: 1.2rem; }
+.hint-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: white;
+  border: 2px solid var(--cream-2);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  flex-wrap: wrap;
+}
+.hint.unlocked { border-color: var(--grass); background: #f7fcef; }
+.hint-label {
+  font-weight: 800;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--brown);
+  white-space: nowrap;
+}
+.hint-body { flex: 1; min-width: 12rem; }
+.hint-form { margin: 0; }
+.btn-hint {
+  background: var(--yolk);
+  color: var(--ink);
+  border: 2px solid #d99a1f;
+  border-radius: 8px;
+  padding: 0.4rem 0.9rem;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.btn-hint:hover { background: #f6c151; }
+.hint-note { font-size: 0.85rem; color: var(--ink-soft); margin: 0.75rem 0 0; }
+
+
+/* ------- Admin dashboard ------- */
+.nav-admin { color: var(--yolk) !important; font-weight: 800; }
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  margin-bottom: 2rem;
+}
+.admin-table th, .admin-table td {
+  padding: 0.6rem 0.85rem;
+  text-align: left;
+  border-bottom: 1px solid var(--cream-2);
+  font-size: 0.92rem;
+}
+.admin-table th { background: var(--cream-2); font-weight: 800; }
+.admin-table .num { text-align: right; }
+.admin-table .rank { text-align: center; width: 2.5rem; }
+.admin-table .actions { white-space: nowrap; }
+.admin-table tr:last-child td { border-bottom: none; }
+.btn-mini {
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  border: 2px solid var(--brown);
+  background: var(--cream);
+  color: var(--ink);
+}
+.btn-mini:hover { background: var(--cream-2); }
+.btn-danger { border-color: var(--coop-red); color: var(--coop-red); }
+.btn-danger:hover { background: #fbe4e5; }
+/* ------- Difficulty badges ------- */
+.diff-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.1em 0.55em;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.cc-title .diff-badge { margin-left: 0.4em; }
+.diff-easy   { background: #e2f3d6; color: #3a7a1f; }
+.diff-medium { background: #fdeecd; color: #9a6a12; }
+.diff-hard   { background: #fbdcdc; color: #a3282a; }
+
+/* ------- Filter bar ------- */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: center;
+  background: white;
+  border: 2px solid var(--cream-2);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin: 1rem 0 1.5rem;
+  box-shadow: var(--shadow);
+}
+.filter-group { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.filter-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  margin-right: 0.25rem;
+}
+.filter-btn {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  border: 2px solid var(--cream-2);
+  background: var(--cream);
+  color: var(--ink-soft);
+}
+.filter-btn:hover { border-color: var(--brown); }
+.filter-btn.active { background: var(--coop-red); border-color: var(--coop-red); color: var(--cream); }
+.no-matches { color: var(--ink-soft); font-style: italic; text-align: center; padding: 2rem; }

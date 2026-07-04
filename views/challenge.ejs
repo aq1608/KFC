@@ -5,10 +5,16 @@
 
   <header class="ch-header">
     <span class="cat-pill cat-<%= challenge.category %>"><%= challenge.category %></span>
+    <span class="diff-badge diff-<%= difficulty %>"><%= difficulty.charAt(0).toUpperCase() + difficulty.slice(1) %></span>
     <h1><%= challenge.title %></h1>
-    <div class="ch-points"><%= challenge.points %> points</div>
+    <div class="ch-points">
+      <%= currentValue %> points
+      <% if (currentValue < challenge.points) { %><span class="pts-initial" title="Started at <%= challenge.points %> and decays as more players solve it"><%= challenge.points %></span><% } %>
+    </div>
     <div class="ch-stats">
       <span title="Total solves"><%= solveCount %> solve<%= solveCount === 1 ? '' : 's' %></span>
+      <span class="dot">·</span>
+      <span title="Points decay as more players solve this">📉 dynamic</span>
       <span class="dot">·</span>
       <% if (firstBlood) { %>
         <span title="First blood">🩸 First blood: <a href="/u/<%= encodeURIComponent(firstBlood) %>"><%= firstBlood %></a></span>
@@ -21,6 +27,27 @@
   <div class="ch-body">
     <%- challenge.description %>
   </div>
+
+  <% if (hints && hints.length) { %>
+    <section class="hints" id="hints">
+      <h2>Hints</h2>
+      <ul class="hint-list">
+        <% hints.forEach((h) => { %>
+          <li class="hint <%= h.unlocked ? 'unlocked' : 'locked' %>">
+            <span class="hint-label">Hint <%= h.idx + 1 %></span>
+            <% if (h.unlocked) { %>
+              <div class="hint-body"><%- h.body %></div>
+            <% } else { %>
+              <form method="post" action="/challenges/<%= challenge.slug %>/hint/<%= h.idx %>" class="hint-form">
+                <button type="submit" class="btn-hint">🔓 Unlock (−<%= h.cost %> pts)</button>
+              </form>
+            <% } %>
+          </li>
+        <% }) %>
+      </ul>
+      <p class="hint-note">Unlocking a hint permanently subtracts its cost from your score.</p>
+    </section>
+  <% } %>
 
   <% if (solved) { %>
     <div class="solved-banner">🥚 You've solved this one. Nice work.</div>

@@ -1,0 +1,110 @@
+<%- include('partials/header', { pageTitle: 'Admin' }) %>
+
+<%
+  function fmtDate(unixSecs) {
+    if (!unixSecs) return '—';
+    return new Date(unixSecs * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+  }
+%>
+
+<h1>🛠️ Admin dashboard</h1>
+<p class="subhead">Competition stats and player moderation. Challenge content is managed in <code>challenges.seed.js</code>.</p>
+
+<div class="profile-stats">
+  <div class="stat"><div class="stat-num"><%= totals.users %></div><div class="stat-label">Players</div></div>
+  <div class="stat"><div class="stat-num"><%= totals.challenges %></div><div class="stat-label">Challenges</div></div>
+  <div class="stat"><div class="stat-num"><%= totals.solves %></div><div class="stat-label">Total solves</div></div>
+  <div class="stat"><div class="stat-num"><%= totals.hintUnlocks %></div><div class="stat-label">Hints unlocked</div></div>
+</div>
+
+<h2>Challenges</h2>
+<table class="admin-table">
+  <thead>
+    <tr>
+      <th>Challenge</th>
+      <th>Category</th>
+      <th class="num">Value</th>
+      <th class="num">Solves</th>
+      <th class="num">Solve rate</th>
+      <th>First blood</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% challenges.forEach((c) => { %>
+      <tr>
+        <td><a href="/challenges/<%= c.slug %>"><%= c.title %></a></td>
+        <td><span class="cat-pill cat-<%= c.category %>"><%= c.category %></span></td>
+        <td class="num"><%= c.value %><% if (c.value < c.points) { %> <span class="pts-initial"><%= c.points %></span><% } %></td>
+        <td class="num"><%= c.solveCount %></td>
+        <td class="num"><%= c.solveRate %>%</td>
+        <td><% if (c.firstBlood) { %>🩸 <a href="/u/<%= encodeURIComponent(c.firstBlood) %>"><%= c.firstBlood %></a><% } else { %>—<% } %></td>
+      </tr>
+    <% }) %>
+  </tbody>
+</table>
+
+<h2>Players</h2>
+<% if (users.length === 0) { %>
+  <p class="empty">No players have registered yet.</p>
+<% } else { %>
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th class="rank">#</th>
+        <th>Player</th>
+        <th class="num">Score</th>
+        <th class="num">Solves</th>
+        <th class="num">🩸</th>
+        <th class="num">Hint −</th>
+        <th>Joined</th>
+        <th class="actions">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% users.forEach((u) => { %>
+        <tr>
+          <td class="rank"><%= u.rank %></td>
+          <td>
+            <a href="/u/<%= encodeURIComponent(u.username) %>"><%= u.username %></a>
+            <% if (u.is_admin) { %><span class="you-tag">admin</span><% } %>
+          </td>
+          <td class="num"><strong><%= u.score %></strong></td>
+          <td class="num"><%= u.solved_count %></td>
+          <td class="num"><%= u.first_bloods || '—' %></td>
+          <td class="num"><%= u.hint_spend || '—' %></td>
+          <td><%= fmtDate(u.created_at) %></td>
+          <td class="actions">
+            <form method="post" action="/admin/users/<%= u.id %>/reset" class="inline"
+                  onsubmit="return confirm('Reset all progress for <%= u.username %>?');">
+              <button type="submit" class="btn-mini">Reset</button>
+            </form>
+            <% if (!u.is_admin) { %>
+              <form method="post" action="/admin/users/<%= u.id %>/delete" class="inline"
+                    onsubmit="return confirm('Permanently delete <%= u.username %>? This cannot be undone.');">
+                <button type="submit" class="btn-mini btn-danger">Delete</button>
+              </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+<% } %>
+
+<h2>Recent solves</h2>
+<% if (recent.length === 0) { %>
+  <p class="empty">No solves recorded yet.</p>
+<% } else { %>
+  <ul class="solve-list">
+    <% recent.forEach((s) => { %>
+      <li class="solve-row">
+        <a class="solve-title" href="/u/<%= encodeURIComponent(s.username) %>"><%= s.username %></a>
+        <span>solved</span>
+        <a class="solve-title" href="/challenges/<%= s.slug %>"><%= s.title %></a>
+        <span class="solve-when"><%= fmtDate(s.solved_at) %></span>
+      </li>
+    <% }) %>
+  </ul>
+<% } %>
+
+<%- include('partials/footer') %>

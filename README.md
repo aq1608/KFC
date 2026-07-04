@@ -6,17 +6,31 @@ A neighbourhood Capture-The-Flag (CTF) web application where players solve chall
 
 KFC is a self-hosted CTF platform built with Node.js and Express. Players register, pick challenges across eight categories, solve them, and compete on a live scoreboard. All flags follow the format `CHICKEN{...}`.
 
-The platform currently ships with **20 challenges** worth **1,975 points**, ranging from beginner "View Source" puzzles to intermediate JWT `alg:none` auth bypasses.
+The platform currently ships with **20 challenges** across eight categories, ranging from beginner "View Source" puzzles to intermediate JWT `alg:none` auth bypasses.
 
 ### Features
 
 - User registration and authentication (bcrypt-hashed passwords)
 - Eight challenge categories: **Web**, **Pwn**, **Crypto**, **Reversing**, **Stego**, **Forensics**, **OSINT**, **Misc**
-- Per-user solve tracking (no duplicate scoring)
-- Live scoreboard ranked by points, then earliest last-solve
+- **Dynamic scoring** — challenges decay in value as more players solve them (see [Scoring](#scoring))
+- Unlockable **hints** that cost points, deducted from a player's net score
+- First-blood tracking and solve counts per challenge
+- Player profiles (`/u/:username`) with rank, score, and solve timeline
+- Live scoreboard ranked by score, then earliest last-solve
+- Flag-submission rate limiting to deter brute-forcing
 - Interactive challenges with their own server routes and pages
 - Session persistence via SQLite
 - Auto-seeding of challenges on server boot
+
+## Scoring
+
+Challenges use **dynamic (decaying) scoring**, similar to CTFd. A challenge starts at its full value and decays toward a floor as more players solve it, so early solves of hard challenges are worth more. Every solver of a challenge is always credited its *current* value, so scores shift as the competition progresses.
+
+```
+value(n) = ceil( ((floor - initial) / decay²) · n² + initial ),  clamped to [floor, initial]
+```
+
+where `n` is the number of solves, `floor = ceil(initial × DYN_MIN_RATIO)`, and `decay = DYN_DECAY` (the solve count at which a challenge reaches its floor). A player's **net score** is the sum of the current values of their solved challenges, minus the cost of any hints they have unlocked. Both `DYN_DECAY` and `DYN_MIN_RATIO` are configurable (see [Environment Variables](#environment-variables)).
 
 ## Tech Stack
 
@@ -81,11 +95,16 @@ The app then listens on **http://localhost:3000**. Notes:
 
 ### Environment Variables
 
-| Variable         | Description                                       | Default                           |
-| ---------------- | ------------------------------------------------- | --------------------------------- |
-| `PORT`           | Port the server listens on                        | `3000`                            |
-| `SESSION_SECRET` | Secret used to sign session cookies               | `cluck-cluck-change-me-in-prod`   |
-| `TOT_SECRET`     | HS256 signing key for the Token of Trust challenge | `coop-signing-key-do-not-share`   |
+| Variable               | Description                                                        | Default                           |
+| ---------------------- | ------------------------------------------------------------------ | --------------------------------- |
+| `PORT`                 | Port the server listens on                                         | `3000`                            |
+| `SESSION_SECRET`       | Secret used to sign session cookies                                | `cluck-cluck-change-me-in-prod`   |
+| `TOT_SECRET`           | HS256 signing key for the Token of Trust challenge                 | `coop-signing-key-do-not-share`   |
+| `KFC_DATA_DIR`         | Directory for the SQLite databases (`kfc.db`, `sessions.db`)       | `./data`                          |
+| `DYN_DECAY`            | Solves at which a challenge decays to its floor value              | `20`                              |
+| `DYN_MIN_RATIO`        | Challenge value floor, as a fraction of its initial points         | `0.4`                             |
+| `FLAG_RATE_MAX`        | Max flag submissions per user per window (rate limiting)           | `15`                              |
+| `FLAG_RATE_WINDOW_MS`  | Rate-limit window in milliseconds                                  | `60000`                           |
 
 > **Important:** Always set a strong `SESSION_SECRET` in production.
 
@@ -151,10 +170,12 @@ Flags are intentionally omitted here — they live server-side in `challenges.se
 KFC/
 ├── server.js              # Express app, auth, and all challenge routes
 ├── db.js                  # SQLite schema & seed helpers
+├── scoring.js             # Dynamic (decaying) scoring formula
 ├── challenges.seed.js     # Challenge definitions (flags live here)
 ├── package.json
 ├── tools/
 │   └── gen_challenges.js  # One-off generator for binary/stego assets
+├── test/                  # node:test suites (challenge integrity + scoring)
 ├── public/
 │   ├── style.css          # Global stylesheet (incl. category pills)
 │   ├── robots.txt         # Used by the Robots Roost challenge
@@ -237,6 +258,10 @@ Keep the flag on the server. Store it only in `challenges.seed.js` (and, where a
 - Passwords are hashed with bcrypt (cost factor 12).
 - Sessions use `httpOnly` and `sameSite: lax` cookies.
 - The `.gitignore` excludes the `data/` directory (databases) and `.env` files.
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the dev setup, how to add challenges, testing, and the branch/PR workflow.
 
 ## License
 
